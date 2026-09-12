@@ -1,7 +1,16 @@
 ---
-status: draft, not implemented
+status: superseded, kept for history
 created: 2026-09-07
+superseded: 2026-09-11
 ---
+
+**Superseded 2026-09-11.** Jamal's own voice memo proposed a markdown-vault design
+instead of this SQLite schema -- one note per artwork with frontmatter, not a database
+row -- matching the pattern voice-journal had just shipped. The `items` table below was
+never implemented; see `src/artist_agent/core.py` (`Item`, `render_item_note`) and
+`src/artist_agent/interests.py` for what actually shipped. `self_score`/`human_score`
+and the new/reviewed status carried over into the real design; the database itself did
+not.
 
 # Artist agent — preference-state schema (draft)
 
