@@ -4,6 +4,7 @@ import frontmatter
 
 from artist_agent.core import (
     Item,
+    derive_title,
     item_stem,
     render_item_note,
     resolve_ai_artist_dir,
@@ -49,6 +50,22 @@ class TestItemStem:
         assert item_stem(item) == "2026-09-12-a-neon-wireframe-city-at-dawn"
 
 
+class TestDeriveTitle:
+    def test_short_prompt_returned_as_is(self):
+        assert derive_title("a neon wireframe city") == "a neon wireframe city"
+
+    def test_long_prompt_truncated_with_ellipsis(self):
+        prompt = " ".join(["word"] * 20)
+        title = derive_title(prompt)
+        assert title == "word " * 11 + "word…"
+        assert len(title.split()) == 12
+
+    def test_exactly_max_words_not_truncated(self):
+        prompt = " ".join(["word"] * 12)
+        assert derive_title(prompt) == prompt
+        assert "…" not in derive_title(prompt)
+
+
 class TestRenderItemNote:
     def _make_item(self, **overrides):
         defaults = {
@@ -66,6 +83,7 @@ class TestRenderItemNote:
     def test_produces_valid_frontmatter(self):
         content = render_item_note(self._make_item(), "../images/foo.png")
         post = frontmatter.loads(content)
+        assert post["title"] == "a neon wireframe city at dawn"
         assert post["prompt"] == "a neon wireframe city at dawn"
         assert post["interest"] == "Synesthetic wireframe"
         assert post["settings"] == {"steps": 30}

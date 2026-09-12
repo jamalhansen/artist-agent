@@ -66,6 +66,15 @@ def item_stem(item: Item) -> str:
     return f"{d}-{slugify(item.prompt)}"
 
 
+def derive_title(prompt: str, max_words: int = 12) -> str:
+    """A readable title from the prompt's own words -- no extra LLM call just to
+    name the thing. Truncated with an ellipsis when the prompt runs longer, since
+    these prompts are often a full descriptive paragraph."""
+    words = prompt.split()
+    title = " ".join(words[:max_words])
+    return title + "…" if len(words) > max_words else title
+
+
 def render_item_note(item: Item, relative_image_path: str) -> str:
     """Render an item as a portable markdown note: YAML frontmatter, then the
     image (plain markdown syntax, not an Obsidian embed) and the agent's own
@@ -84,6 +93,7 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
     )
     post = frontmatter.Post(
         body,
+        title=derive_title(item.prompt),
         generated_at=item.generated_at.isoformat(),
         interest=item.interest_title,
         prompt=item.prompt,
