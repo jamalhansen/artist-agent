@@ -46,6 +46,7 @@ class TestItemStem:
             image_filename="",
             self_score=0.8,
             self_score_notes="good",
+            models={"prompt": "ollama/llama3.2:3b", "image": "sdxl.ckpt", "critique": "anthropic/claude"},
         )
         assert item_stem(item) == "2026-09-12-a-neon-wireframe-city-at-dawn"
 
@@ -76,6 +77,11 @@ class TestRenderItemNote:
             "image_filename": "2026-09-12-a-neon-wireframe-city-at.png",
             "self_score": 0.8,
             "self_score_notes": "Strong color use, avoids cliches.",
+            "models": {
+                "prompt": "ollama/llama3.2:3b",
+                "image": "sd_xl_base_1.0_f16.ckpt",
+                "critique": "anthropic/claude-haiku-4-5-20251001",
+            },
         }
         defaults.update(overrides)
         return Item(**defaults)
@@ -87,6 +93,11 @@ class TestRenderItemNote:
         assert post["prompt"] == "a neon wireframe city at dawn"
         assert post["interest"] == "Synesthetic wireframe"
         assert post["settings"] == {"steps": 30}
+        assert post["models"] == {
+            "prompt": "ollama/llama3.2:3b",
+            "image": "sd_xl_base_1.0_f16.ckpt",
+            "critique": "anthropic/claude-haiku-4-5-20251001",
+        }
         assert post["self_score"] == 0.8
         assert post["human_score"] is None
         assert post["status"] == "new"

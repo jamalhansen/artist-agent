@@ -47,7 +47,14 @@ def slugify(text: str, max_words: int = 6, max_chars: int = 50) -> str:
 
 @dataclass
 class Item:
-    """One generated artwork -- the unit this whole tool produces."""
+    """One generated artwork -- the unit this whole tool produces.
+
+    `models` records which model did which of the three independent, swappable
+    steps -- keys "prompt" (composed the image prompt from the chosen interest),
+    "image" (Draw Things' generation model), "critique" (the vision model that
+    scored the result) -- so a prompt or critique that reads oddly later can be
+    traced to a specific model rather than guessed at.
+    """
 
     generated_at: datetime
     prompt: str
@@ -56,6 +63,7 @@ class Item:
     image_filename: str
     self_score: float
     self_score_notes: str
+    models: dict
     human_score: float | None = None
     human_notes: str | None = None
     status: str = "new"
@@ -98,6 +106,7 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
         interest=item.interest_title,
         prompt=item.prompt,
         settings=item.settings,
+        models=item.models,
         self_score=item.self_score,
         human_score=item.human_score,
         status=item.status,

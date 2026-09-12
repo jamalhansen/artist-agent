@@ -117,6 +117,7 @@ def generate(
 
     now = datetime.now().astimezone()
 
+    vision_llm = None
     try:
         vision_llm = resolve_provider(PROVIDERS, vision_provider, vision_model, no_llm=no_llm)
         critique = self_score(vision_llm, chosen.description, image_prompt, image_bytes)
@@ -126,6 +127,12 @@ def generate(
     if verbose:
         typer.echo(f"Self-critique ({critique.score:.2f}): {critique.notes}")
 
+    models_used = {
+        "prompt": f"{provider}/{llm_provider.model}",
+        "image": DRAW_THINGS_MODEL,
+        "critique": f"{vision_provider}/{vision_llm.model}" if vision_llm else f"{vision_provider} (failed)",
+    }
+
     item = Item(
         generated_at=now,
         prompt=image_prompt,
@@ -134,6 +141,7 @@ def generate(
         image_filename="",  # set below once the stem is known
         self_score=critique.score,
         self_score_notes=critique.notes,
+        models=models_used,
     )
     stem = item_stem(item)
     item.image_filename = f"{stem}.png"
