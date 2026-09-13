@@ -15,8 +15,8 @@ import frontmatter
 
 DEFAULT_AI_ARTIST_DIR = os.environ.get("AI_ARTIST_DIR", "~/iCloud/ai-artist/")
 
-DRAW_THINGS_BASE_URL = os.environ.get("DRAW_THINGS_BASE_URL", "http://127.0.0.1:7860")
 DRAW_THINGS_MODEL = os.environ.get("DRAW_THINGS_MODEL", "sd_xl_base_1.0_f16.ckpt")
+DRAW_THINGS_CLI_PATH = os.environ.get("DRAW_THINGS_CLI_PATH", "draw-things-cli")
 
 
 def resolve_ai_artist_dir(path: str | None) -> Path:

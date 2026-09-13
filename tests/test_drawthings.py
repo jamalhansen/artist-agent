@@ -1,77 +1,71 @@
-import base64
-from unittest.mock import MagicMock, patch
+import subprocess
+from unittest.mock import patch
 
 import pytest
-import requests
 
-from artist_agent.drawthings import DrawThingsError, generate_image, is_reachable
-
-
-class TestIsReachable:
-    def test_true_on_200(self):
-        with patch("artist_agent.drawthings.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200)
-            assert is_reachable("http://127.0.0.1:7860") is True
-
-    def test_false_on_non_200(self):
-        with patch("artist_agent.drawthings.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=500)
-            assert is_reachable("http://127.0.0.1:7860") is False
-
-    def test_false_on_connection_error(self):
-        with patch("artist_agent.drawthings.requests.get", side_effect=requests.ConnectionError):
-            assert is_reachable("http://127.0.0.1:7860") is False
+from artist_agent.drawthings import DrawThingsError, generate_image
 
 
 class TestGenerateImage:
-    def _mock_response(self, image_bytes: bytes):
-        resp = MagicMock()
-        resp.raise_for_status = MagicMock()
-        resp.json.return_value = {"images": [base64.b64encode(image_bytes).decode()]}
-        return resp
+    def _mock_run(self, returncode=0, stderr="", write_output=True, image_bytes=b"fake-png-bytes"):
+        def _run(cmd, capture_output, text, timeout, check):
+            if write_output:
+                output_path = cmd[cmd.index("--output") + 1]
+                with open(output_path, "wb") as f:
+                    f.write(image_bytes)
+            return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr=stderr)
 
-    def test_returns_decoded_image_bytes(self):
-        with patch("artist_agent.drawthings.requests.post") as mock_post:
-            mock_post.return_value = self._mock_response(b"fake-png-bytes")
-            result = generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt")
+        return _run
+
+    def test_returns_written_image_bytes(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()):
+            result = generate_image("a prompt", "sdxl.ckpt")
         assert result == b"fake-png-bytes"
 
-    def test_includes_required_model_field(self):
-        with patch("artist_agent.drawthings.requests.post") as mock_post:
-            mock_post.return_value = self._mock_response(b"x")
-            generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt")
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload["model"] == "sdxl.ckpt"
-        assert payload["prompt"] == "a prompt"
+    def test_includes_model_and_prompt_flags(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt")
+        cmd = mock_run.call_args.args[0]
+        assert "--model" in cmd and cmd[cmd.index("--model") + 1] == "sdxl.ckpt"
+        assert "--prompt" in cmd and cmd[cmd.index("--prompt") + 1] == "a prompt"
+        assert "--no-download-missing" in cmd
 
-    def test_merges_extra_settings_into_payload(self):
-        with patch("artist_agent.drawthings.requests.post") as mock_post:
-            mock_post.return_value = self._mock_response(b"x")
-            generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt", settings={"steps": 30})
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload["steps"] == 30
+    def test_merges_extra_settings_into_flags(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt", settings={"steps": 30})
+        cmd = mock_run.call_args.args[0]
+        assert "--steps" in cmd and cmd[cmd.index("--steps") + 1] == "30"
 
-    def test_raises_on_request_failure(self):
+    def test_raises_on_missing_cli(self):
         with (
-            patch("artist_agent.drawthings.requests.post", side_effect=requests.ConnectionError("down")),
-            pytest.raises(DrawThingsError, match="generation request failed"),
+            patch("artist_agent.drawthings.subprocess.run", side_effect=FileNotFoundError("no such file")),
+            pytest.raises(DrawThingsError, match="not found"),
         ):
-            generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt")
+            generate_image("a prompt", "sdxl.ckpt")
 
-    def test_raises_on_empty_images_list(self):
-        with patch("artist_agent.drawthings.requests.post") as mock_post:
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock()
-            resp.json.return_value = {"images": []}
-            mock_post.return_value = resp
-            with pytest.raises(DrawThingsError, match="no images"):
-                generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt")
+    def test_raises_on_timeout(self):
+        with (
+            patch(
+                "artist_agent.drawthings.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="draw-things-cli", timeout=300.0),
+            ),
+            pytest.raises(DrawThingsError, match="timed out"),
+        ):
+            generate_image("a prompt", "sdxl.ckpt")
 
-    def test_raises_on_undecodable_image(self):
-        with patch("artist_agent.drawthings.requests.post") as mock_post:
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock()
-            resp.json.return_value = {"images": ["not valid base64!!!"]}
-            mock_post.return_value = resp
-            with pytest.raises(DrawThingsError, match="undecodable"):
-                generate_image("a prompt", "http://127.0.0.1:7860", "sdxl.ckpt")
+    def test_raises_on_nonzero_exit(self):
+        with (
+            patch(
+                "artist_agent.drawthings.subprocess.run",
+                side_effect=self._mock_run(returncode=1, stderr="model not found", write_output=False),
+            ),
+            pytest.raises(DrawThingsError, match="model not found"),
+        ):
+            generate_image("a prompt", "sdxl.ckpt")
+
+    def test_raises_when_output_file_missing_despite_success(self):
+        with (
+            patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run(write_output=False)),
+            pytest.raises(DrawThingsError, match="wrote no output file"),
+        ):
+            generate_image("a prompt", "sdxl.ckpt")

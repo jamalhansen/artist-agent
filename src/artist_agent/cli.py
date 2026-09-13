@@ -17,7 +17,7 @@ from local_first_common.providers import PROVIDERS
 from local_first_common.tracking import register_tool, timed_run
 
 from .core import (
-    DRAW_THINGS_BASE_URL,
+    DRAW_THINGS_CLI_PATH,
     DRAW_THINGS_MODEL,
     Item,
     images_dir,
@@ -27,7 +27,7 @@ from .core import (
     render_item_note,
     resolve_ai_artist_dir,
 )
-from .drawthings import DrawThingsError, generate_image, is_reachable
+from .drawthings import DrawThingsError, generate_image
 from .interests import parse_interests, pick_direction, record_outcome, render_interests
 from .prompt import compose_prompt
 from .scoring import SelfScore, self_score
@@ -104,13 +104,9 @@ def generate(
         typer.echo("\nDry run -- stopping before generation.")
         raise typer.Exit(0)
 
-    if not is_reachable(DRAW_THINGS_BASE_URL):
-        typer.echo(f"Error: Draw Things not reachable at {DRAW_THINGS_BASE_URL}", err=True)
-        raise typer.Exit(1)
-
     settings: dict = {}
     try:
-        image_bytes = generate_image(image_prompt, DRAW_THINGS_BASE_URL, DRAW_THINGS_MODEL, settings)
+        image_bytes = generate_image(image_prompt, DRAW_THINGS_MODEL, settings, cli_path=DRAW_THINGS_CLI_PATH)
     except DrawThingsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
