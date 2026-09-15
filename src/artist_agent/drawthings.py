@@ -34,9 +34,16 @@ def generate_image(
     model: str,
     settings: dict | None = None,
     cli_path: str = "draw-things-cli",
-    timeout: float = 300.0,
+    timeout: float = 500.0,
 ) -> bytes:
     """Generate one image via draw-things-cli's local inference and return its raw PNG bytes.
+
+    Default timeout is 500s, not the ~60-90s a real generation normally takes -- the
+    2026-09-14 scheduled run hit the previous 300s default on a one-time transient
+    slowdown (a manual re-run minutes later took 66s, so it wasn't reproducible), and
+    300s left no real headroom under artist-agent-run's own 600s outer watchdog. 500s
+    still leaves ~100s for prompt composition + vision critique + file I/O within that
+    600s budget, while giving generation itself room to survive a slow morning.
 
     `model` is a model filename already present in Draw Things' Models directory
     (--no-download-missing keeps a misconfigured model name a fast, clear failure
