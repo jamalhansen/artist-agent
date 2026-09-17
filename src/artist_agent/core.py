@@ -18,6 +18,15 @@ DEFAULT_AI_ARTIST_DIR = os.environ.get("AI_ARTIST_DIR", "~/iCloud/ai-artist/")
 DRAW_THINGS_MODEL = os.environ.get("DRAW_THINGS_MODEL", "sd_xl_base_1.0_f16.ckpt")
 DRAW_THINGS_CLI_PATH = os.environ.get("DRAW_THINGS_CLI_PATH", "draw-things-cli")
 
+# Remote mode: generate against a running gRPCServerCLI-macOS instead of local
+# inference. See drawthings.py's module docstring for why (2026-09-17: local
+# inference hung on every scheduled/launchd run, reproduced on demand, root
+# cause not confirmed but consistent with a known Metal-in-daemon-context
+# limitation). Unset by default -- local inference stays the default until
+# remote mode is verified to actually fix the unattended case.
+DRAW_THINGS_REMOTE_URL = os.environ.get("DRAW_THINGS_REMOTE_URL") or None
+DRAW_THINGS_REMOTE_PORT = int(os.environ.get("DRAW_THINGS_REMOTE_PORT", "7859"))
+
 
 def resolve_ai_artist_dir(path: str | None) -> Path:
     return Path(path or DEFAULT_AI_ARTIST_DIR).expanduser()

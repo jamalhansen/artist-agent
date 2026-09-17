@@ -69,3 +69,43 @@ class TestGenerateImage:
             pytest.raises(DrawThingsError, match="wrote no output file"),
         ):
             generate_image("a prompt", "sdxl.ckpt")
+
+
+class TestGenerateImageRemoteMode:
+    def _mock_run(self, returncode=0, image_bytes=b"fake-png-bytes"):
+        def _run(cmd, capture_output, text, timeout, check):
+            output_path = cmd[cmd.index("--output") + 1]
+            with open(output_path, "wb") as f:
+                f.write(image_bytes)
+            return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr="")
+
+        return _run
+
+    def test_remote_url_adds_remote_flags(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt", remote_url="127.0.0.1", remote_port=7859)
+        cmd = mock_run.call_args.args[0]
+        assert "--remote" in cmd
+        assert cmd[cmd.index("--remote-url") + 1] == "127.0.0.1"
+        assert cmd[cmd.index("--remote-port") + 1] == "7859"
+        assert "--no-remote-tls" in cmd
+
+    def test_remote_mode_omits_no_download_missing(self):
+        # that flag governs local model resolution -- meaningless server-side
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt", remote_url="127.0.0.1")
+        cmd = mock_run.call_args.args[0]
+        assert "--no-download-missing" not in cmd
+
+    def test_remote_tls_true_omits_no_remote_tls_flag(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt", remote_url="127.0.0.1", remote_tls=True)
+        cmd = mock_run.call_args.args[0]
+        assert "--no-remote-tls" not in cmd
+
+    def test_no_remote_url_stays_local_mode(self):
+        with patch("artist_agent.drawthings.subprocess.run", side_effect=self._mock_run()) as mock_run:
+            generate_image("a prompt", "sdxl.ckpt")
+        cmd = mock_run.call_args.args[0]
+        assert "--remote" not in cmd
+        assert "--no-download-missing" in cmd

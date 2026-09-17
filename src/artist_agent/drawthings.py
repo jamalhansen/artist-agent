@@ -1,15 +1,32 @@
-"""Draw Things local-inference CLI client.
+"""Draw Things inference CLI client.
 
-Shells out to `draw-things-cli`, Draw Things' own headless local-inference
-binary (github.com/drawthingsai/draw-things-community/releases) instead of
-the GUI app's HTTP API. This removes a whole class of problem the HTTP
-client had: the app's "HTTP API Server" toggle is genuine in-memory-only
-state -- confirmed 2026-09-13 via `defaults read`, the sandboxed container's
-Preferences plist, and its config.sqlite3, none of which hold a persisted
-flag -- so it never survives an app restart, and a scheduled run could
-silently need a human at the machine to flip it. draw-things-cli reads the
-same on-disk models directly and needs neither the app nor any server
-running: confirmed live 2026-09-13 with Draw Things fully quit.
+Shells out to `draw-things-cli`, Draw Things' own headless CLI
+(github.com/drawthingsai/draw-things-community/releases), in one of two
+modes:
+
+- **Local** (default): draw-things-cli does the Metal/GPU inference itself,
+  in the same process launchd spawns for the run. No app or server needed.
+- **Remote**: draw-things-cli is just a thin network client; a separately
+  running `gRPCServerCLI-macOS` process does the actual Metal work and stays
+  alive across runs.
+
+2026-09-13: switched from the GUI app's HTTP API to draw-things-cli local
+inference -- removed the "HTTP API Server" toggle problem (genuine
+in-memory-only state, confirmed via `defaults read`/config.sqlite3, never
+survived an app restart).
+
+2026-09-17: local inference turned out to have its own unattended-only
+failure mode -- six straight scheduled (launchd) runs hung with near-zero
+CPU for the full timeout, reproduced on demand via `launchctl kickstart -k`
+regardless of time of day or display state, while every manual/interactive
+run succeeded in ~60-90s. Four other hypotheses (displaysleep, Accessibility
+permission, stdin/TTY, LaunchAgent session type) were directly tested and
+ruled out. Leading theory, not confirmed: `MTLCreateSystemDefaultDevice()`
+is documented as unreliable in non-interactive/daemon process contexts
+(Apple Developer Forums, Blender's own bug tracker, GitHub Actions
+runner-images all report the same class of failure) -- remote mode moves
+that risky one-time Metal initialization into a long-lived server process
+instead of repeating it fresh every single scheduled run.
 """
 import subprocess
 import tempfile
@@ -35,8 +52,11 @@ def generate_image(
     settings: dict | None = None,
     cli_path: str = "draw-things-cli",
     timeout: float = 500.0,
+    remote_url: str | None = None,
+    remote_port: int = 7859,
+    remote_tls: bool = False,
 ) -> bytes:
-    """Generate one image via draw-things-cli's local inference and return its raw PNG bytes.
+    """Generate one image via draw-things-cli and return its raw PNG bytes.
 
     Default timeout is 500s, not the ~60-90s a real generation normally takes -- the
     2026-09-14 scheduled run hit the previous 300s default on a one-time transient
@@ -45,9 +65,11 @@ def generate_image(
     still leaves ~100s for prompt composition + vision critique + file I/O within that
     600s budget, while giving generation itself room to survive a slow morning.
 
-    `model` is a model filename already present in Draw Things' Models directory
-    (--no-download-missing keeps a misconfigured model name a fast, clear failure
-    rather than a silent multi-GB download).
+    `model` is a model filename already present in Draw Things' Models directory.
+
+    If `remote_url` is set, generates against a running `gRPCServerCLI-macOS` instead
+    of local inference -- see module docstring for why. `--no-download-missing` is a
+    local-mode-only flag (model resolution happens server-side in remote mode).
     """
     settings = settings or {}
     with tempfile.TemporaryDirectory() as tmp:
@@ -58,8 +80,13 @@ def generate_image(
             "--model", model,
             "--prompt", prompt,
             "--output", str(output_path),
-            "--no-download-missing",
         ]
+        if remote_url:
+            cmd += ["--remote", "--remote-url", remote_url, "--remote-port", str(remote_port)]
+            if not remote_tls:
+                cmd += ["--no-remote-tls"]
+        else:
+            cmd += ["--no-download-missing"]
         for key, flag in _SETTING_FLAGS.items():
             if key in settings:
                 cmd += [flag, str(settings[key])]

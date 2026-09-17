@@ -19,6 +19,8 @@ from local_first_common.tracking import register_tool, timed_run
 from .core import (
     DRAW_THINGS_CLI_PATH,
     DRAW_THINGS_MODEL,
+    DRAW_THINGS_REMOTE_PORT,
+    DRAW_THINGS_REMOTE_URL,
     Item,
     images_dir,
     interests_path,
@@ -106,7 +108,14 @@ def generate(
 
     settings: dict = {}
     try:
-        image_bytes = generate_image(image_prompt, DRAW_THINGS_MODEL, settings, cli_path=DRAW_THINGS_CLI_PATH)
+        image_bytes = generate_image(
+            image_prompt,
+            DRAW_THINGS_MODEL,
+            settings,
+            cli_path=DRAW_THINGS_CLI_PATH,
+            remote_url=DRAW_THINGS_REMOTE_URL,
+            remote_port=DRAW_THINGS_REMOTE_PORT,
+        )
     except DrawThingsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
