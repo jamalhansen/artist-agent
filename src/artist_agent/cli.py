@@ -106,11 +106,12 @@ def generate(
         typer.echo("\nDry run -- stopping before generation.")
         raise typer.Exit(0)
 
-    settings: dict = {}
+    model = chosen.model or DRAW_THINGS_MODEL
+    settings = dict(chosen.settings)
     try:
         image_bytes = generate_image(
             image_prompt,
-            DRAW_THINGS_MODEL,
+            model,
             settings,
             cli_path=DRAW_THINGS_CLI_PATH,
             remote_url=DRAW_THINGS_REMOTE_URL,
@@ -134,7 +135,7 @@ def generate(
 
     models_used = {
         "prompt": f"{provider}/{llm_provider.model}",
-        "image": DRAW_THINGS_MODEL,
+        "image": model,
         "critique": f"{vision_provider}/{vision_llm.model}" if vision_llm else f"{vision_provider} (failed)",
     }
 

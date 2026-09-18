@@ -7,13 +7,23 @@ next and to fold each generation's outcome back in -- not to silently prune or
 invent new directions on its own yet. Per the schema draft this design started
 from: don't build an auto-mutation scheme before there's enough real generations
 to know whether the existing, simpler loop even needs one.
+
+A direction can optionally pin its own model and generation settings (model, steps,
+cfg, width, height, seed) alongside its score line. These are paired with the
+direction deliberately, not chosen per-run at random: record_outcome() folds each
+generation's score back into the direction it came from, so a direction's score
+stays attributable to one consistent model+settings combo instead of conflating
+"this prompt/direction didn't work" with "that run happened to use a different
+checkpoint or step count."
 """
 import random
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 _HEADING_RE = re.compile(r"^##\s+(.+)$")
 _SCORE_RE = re.compile(r"^score:\s*([\d.]+)\s*\((\d+)\s*generations?\)\s*$")
+_KV_RE = re.compile(r"^(model|steps|cfg|width|height|seed):\s*(\S.*)$")
+_INT_SETTING_KEYS = ("steps", "width", "height", "seed")
 
 # New/never-scored interests still get picked sometimes -- a bare 0.0 score would
 # otherwise never win a weighted draw against anything with real history.
@@ -26,6 +36,12 @@ class Interest:
     score: float
     generations: int
     description: str
+    model: str | None = None
+    settings: dict = field(default_factory=dict)
+
+
+def _coerce_setting(key: str, value: str) -> int | float:
+    return int(value) if key in _INT_SETTING_KEYS else float(value)
 
 
 def parse_interests(text: str) -> tuple[str, list[Interest]]:
@@ -37,19 +53,29 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
 
     A section missing a "score: X (N generations)" line (e.g. one Jamal just
     added by hand) defaults to score=0.0, generations=0 -- a fresh direction,
-    not an error.
+    not an error. Same for model/setting lines -- entirely optional, absent
+    means "use the tool's defaults."
     """
     interests = []
     preamble_lines: list[str] = []
     title = None
     score = 0.0
     generations = 0
+    model: str | None = None
+    settings: dict = {}
     description_lines: list[str] = []
 
     def flush():
         if title is not None:
             interests.append(
-                Interest(title, score, generations, "\n".join(description_lines).strip())
+                Interest(
+                    title,
+                    score,
+                    generations,
+                    "\n".join(description_lines).strip(),
+                    model=model,
+                    settings=dict(settings),
+                )
             )
 
     for line in text.splitlines():
@@ -58,6 +84,7 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
             flush()
             title = heading_match.group(1).strip()
             score, generations = 0.0, 0
+            model, settings = None, {}
             description_lines = []
             continue
         if title is None:
@@ -66,6 +93,14 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
         score_match = _SCORE_RE.match(line.strip())
         if score_match:
             score, generations = float(score_match.group(1)), int(score_match.group(2))
+            continue
+        kv_match = _KV_RE.match(line.strip())
+        if kv_match:
+            key, value = kv_match.group(1), kv_match.group(2).strip()
+            if key == "model":
+                model = value
+            else:
+                settings[key] = _coerce_setting(key, value)
             continue
         description_lines.append(line)
 
@@ -77,11 +112,16 @@ def render_interests(interests: list[Interest], preamble: str = "") -> str:
     """Inverse of parse_interests -- round-trips a list back to the same file shape."""
     parts = [preamble.rstrip()] if preamble.strip() else []
     for interest in interests:
-        parts.append(
-            f"## {interest.title}\n"
-            f"score: {interest.score:.2f} ({interest.generations} generations)\n\n"
-            f"{interest.description}"
-        )
+        lines = [
+            f"## {interest.title}",
+            f"score: {interest.score:.2f} ({interest.generations} generations)",
+        ]
+        if interest.model:
+            lines.append(f"model: {interest.model}")
+        for key in ("steps", "cfg", "width", "height", "seed"):
+            if key in interest.settings:
+                lines.append(f"{key}: {interest.settings[key]}")
+        parts.append("\n".join(lines) + "\n\n" + interest.description)
     return "\n\n".join(parts).strip() + "\n"
 
 

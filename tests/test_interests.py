@@ -57,6 +57,31 @@ class TestParseInterests:
         assert interests == []
         assert preamble == ""
 
+    def test_parses_model_and_settings(self):
+        text = (
+            "## Custom direction\n"
+            "score: 0.40 (1 generations)\n"
+            "model: some_other_model.ckpt\n"
+            "steps: 30\n"
+            "cfg: 7.5\n\n"
+            "A description.\n"
+        )
+        _, interests = parse_interests(text)
+        assert interests[0].model == "some_other_model.ckpt"
+        assert interests[0].settings == {"steps": 30, "cfg": 7.5}
+
+    def test_missing_model_and_settings_default_to_none_and_empty(self):
+        _, interests = parse_interests(SAMPLE)
+        assert interests[0].model is None
+        assert interests[0].settings == {}
+
+    def test_settings_do_not_leak_into_description(self):
+        text = "## X\nscore: 0.0 (0 generations)\nmodel: foo.ckpt\nsteps: 20\n\nreal description\n"
+        _, interests = parse_interests(text)
+        assert "model:" not in interests[0].description
+        assert "steps:" not in interests[0].description
+        assert interests[0].description == "real description"
+
 
 class TestRenderInterests:
     def test_round_trips_through_parse(self):
@@ -71,6 +96,28 @@ class TestRenderInterests:
             [Interest("Only one", 0.5, 1, "desc")], preamble=""
         )
         assert rendered.startswith("## Only one")
+
+    def test_renders_model_and_settings_when_present(self):
+        interest = Interest(
+            "Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5}
+        )
+        rendered = render_interests([interest])
+        assert "model: some_other_model.ckpt" in rendered
+        assert "steps: 30" in rendered
+        assert "cfg: 7.5" in rendered
+
+    def test_omits_model_and_settings_lines_when_absent(self):
+        rendered = render_interests([Interest("Plain", 0.5, 1, "desc")])
+        assert "model:" not in rendered
+        assert "steps:" not in rendered
+
+    def test_round_trips_model_and_settings(self):
+        interest = Interest(
+            "Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5}
+        )
+        rendered = render_interests([interest])
+        _, parsed_back = parse_interests(rendered)
+        assert parsed_back[0] == interest
 
 
 class TestPickDirection:
