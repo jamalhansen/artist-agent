@@ -15,3 +15,19 @@ class TestComposePrompt:
         system, user = provider.calls[0]
         assert system == SYSTEM_PROMPT
         assert user == "the interest description"
+
+    def test_no_current_event_leaves_user_message_unchanged(self):
+        provider = MockProvider(response="a prompt")
+        compose_prompt(provider, "the interest description", current_event=None)
+        _, user = provider.calls[0]
+        assert user == "the interest description"
+
+    def test_current_event_appended_to_user_message(self):
+        provider = MockProvider(response="a prompt")
+        compose_prompt(provider, "the interest description", current_event="Some real headline")
+        _, user = provider.calls[0]
+        assert "the interest description" in user
+        assert "Some real headline" in user
+
+    def test_system_prompt_instructs_not_to_depict_current_event_literally(self):
+        assert "not depict" in SYSTEM_PROMPT.lower() or "literal" in SYSTEM_PROMPT.lower()

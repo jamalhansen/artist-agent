@@ -7,7 +7,10 @@ from artist_agent.core import (
     derive_title,
     item_stem,
     render_item_note,
+    render_signal_note,
     resolve_ai_artist_dir,
+    signal_stem,
+    signals_dir,
     slugify,
 )
 
@@ -118,3 +121,48 @@ class TestRenderItemNote:
         content = render_item_note(item, "../images/foo.png")
         post = frontmatter.loads(content)
         assert post["prompt"] == 'a "glitchy" city — synesthesia: colors as sound'
+
+    def test_current_event_fields_default_to_none(self):
+        content = render_item_note(self._make_item(), "../images/foo.png")
+        post = frontmatter.loads(content)
+        assert post["current_event_title"] is None
+        assert post["current_event_source_url"] is None
+
+    def test_current_event_fields_recorded_when_present(self):
+        item = self._make_item(
+            current_event_title="Some real headline",
+            current_event_source_url="https://example.com/article",
+        )
+        content = render_item_note(item, "../images/foo.png")
+        post = frontmatter.loads(content)
+        assert post["current_event_title"] == "Some real headline"
+        assert post["current_event_source_url"] == "https://example.com/article"
+
+
+class TestSignalsDir:
+    def test_is_a_sibling_of_images_and_items(self, tmp_path):
+        assert signals_dir(tmp_path) == tmp_path / "signals"
+
+
+class TestSignalStem:
+    def test_combines_date_and_slug(self):
+        assert (
+            signal_stem("Some Real Headline", datetime(2026, 9, 18, tzinfo=UTC))
+            == "2026-09-18-some-real-headline"
+        )
+
+
+class TestRenderSignalNote:
+    def test_produces_valid_frontmatter(self):
+        content = render_signal_note(
+            "Some real headline", "https://example.com/article", datetime(2026, 9, 18, tzinfo=UTC)
+        )
+        post = frontmatter.loads(content)
+        assert post["title"] == "Some real headline"
+        assert post["source_url"] == "https://example.com/article"
+        assert "Some real headline" in post.content
+
+    def test_source_url_can_be_none(self):
+        content = render_signal_note("Some real headline", None, datetime(2026, 9, 18, tzinfo=UTC))
+        post = frontmatter.loads(content)
+        assert post["source_url"] is None

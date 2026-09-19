@@ -82,6 +82,15 @@ class TestParseInterests:
         assert "steps:" not in interests[0].description
         assert interests[0].description == "real description"
 
+    def test_parses_signal(self):
+        text = "## X\nscore: 0.0 (0 generations)\nsignal: content-discovery\n\ndesc\n"
+        _, interests = parse_interests(text)
+        assert interests[0].signal == "content-discovery"
+
+    def test_missing_signal_defaults_to_none(self):
+        _, interests = parse_interests(SAMPLE)
+        assert interests[0].signal is None
+
 
 class TestRenderInterests:
     def test_round_trips_through_parse(self):
@@ -116,6 +125,13 @@ class TestRenderInterests:
             "Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5}
         )
         rendered = render_interests([interest])
+        _, parsed_back = parse_interests(rendered)
+        assert parsed_back[0] == interest
+
+    def test_renders_and_round_trips_signal(self):
+        interest = Interest("Headline-reactive", 0.0, 0, "desc", signal="content-discovery")
+        rendered = render_interests([interest])
+        assert "signal: content-discovery" in rendered
         _, parsed_back = parse_interests(rendered)
         assert parsed_back[0] == interest
 

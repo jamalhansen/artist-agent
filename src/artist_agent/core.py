@@ -44,6 +44,10 @@ def interests_path(base: Path) -> Path:
     return base / "_state" / "interests.md"
 
 
+def signals_dir(base: Path) -> Path:
+    return base / "signals"
+
+
 _SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -76,11 +80,34 @@ class Item:
     human_score: float | None = None
     human_notes: str | None = None
     status: str = "new"
+    current_event_title: str | None = None
+    current_event_source_url: str | None = None
 
 
 def item_stem(item: Item) -> str:
     d = item.generated_at.date().isoformat()
     return f"{d}-{slugify(item.prompt)}"
+
+
+def signal_stem(title: str, captured_at: datetime) -> str:
+    d = captured_at.date().isoformat()
+    return f"{d}-{slugify(title)}"
+
+
+def render_signal_note(title: str, source_url: str | None, captured_at: datetime) -> str:
+    """Durable local snapshot of a current-event signal fetched from Contexta's
+    inbox -- lives in the agent's own portable folder (signals/, alongside
+    images/ and items/) so a given day's generation stays self-contained even
+    if the original inbox file later moves or gets archived by Contexta's own
+    reduce pipeline.
+    """
+    post = frontmatter.Post(
+        title,
+        title=title,
+        source_url=source_url,
+        captured_at=captured_at.isoformat(),
+    )
+    return frontmatter.dumps(post) + "\n"
 
 
 def derive_title(prompt: str, max_words: int = 12) -> str:
@@ -119,5 +146,7 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
         self_score=item.self_score,
         human_score=item.human_score,
         status=item.status,
+        current_event_title=item.current_event_title,
+        current_event_source_url=item.current_event_source_url,
     )
     return frontmatter.dumps(post) + "\n"

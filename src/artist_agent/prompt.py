@@ -19,9 +19,28 @@ Rules:
   "atmospheric") without a concrete visual to hang them on are worse than nothing.
 - Output ONLY the prompt itself, as one paragraph. No preamble, no title, no
   explanation of your choices.
+
+If you are also given a current-event signal, treat it exactly like any other genre
+cliche to avoid depicting literally: no recognizable people, logos, headlines, screens,
+or literal scenes from it. Instead let its mood, tempo, or emotional temperature inform
+the image's color, motion, and composition -- the same translation a synesthete makes
+from sound to shape, applied to a real event instead.
 """
 
 
-def compose_prompt(provider: BaseProvider, interest_description: str) -> str:
-    """Send an interest's description to the provider and return a ready-to-use prompt."""
-    return provider.complete(SYSTEM_PROMPT, interest_description).strip()
+def compose_prompt(
+    provider: BaseProvider, interest_description: str, current_event: str | None = None
+) -> str:
+    """Send an interest's description to the provider and return a ready-to-use prompt.
+
+    current_event, when given, is a real topic (a headline/title, not a full
+    article) to draw mood/tempo/feeling from -- see SYSTEM_PROMPT's rule on
+    treating it like any other cliche to avoid depicting literally.
+    """
+    user_message = interest_description
+    if current_event:
+        user_message += (
+            f"\n\nToday's real-world signal to draw mood from (do not depict literally): "
+            f"{current_event}"
+        )
+    return provider.complete(SYSTEM_PROMPT, user_message).strip()

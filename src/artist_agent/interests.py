@@ -15,6 +15,11 @@ generation's score back into the direction it came from, so a direction's score
 stays attributable to one consistent model+settings combo instead of conflating
 "this prompt/direction didn't work" with "that run happened to use a different
 checkpoint or step count."
+
+A direction can also opt into a real-world signal via `signal: content-discovery`,
+which pulls the most recently captured content-discovery-agent item from Contexta's
+inbox as mood/tempo inspiration for the composed prompt (see signals.py) -- not a
+literal depiction, per prompt.py's system prompt rules.
 """
 import random
 import re
@@ -22,7 +27,7 @@ from dataclasses import dataclass, field, replace
 
 _HEADING_RE = re.compile(r"^##\s+(.+)$")
 _SCORE_RE = re.compile(r"^score:\s*([\d.]+)\s*\((\d+)\s*generations?\)\s*$")
-_KV_RE = re.compile(r"^(model|steps|cfg|width|height|seed):\s*(\S.*)$")
+_KV_RE = re.compile(r"^(model|signal|steps|cfg|width|height|seed):\s*(\S.*)$")
 _INT_SETTING_KEYS = ("steps", "width", "height", "seed")
 
 # New/never-scored interests still get picked sometimes -- a bare 0.0 score would
@@ -38,6 +43,7 @@ class Interest:
     description: str
     model: str | None = None
     settings: dict = field(default_factory=dict)
+    signal: str | None = None
 
 
 def _coerce_setting(key: str, value: str) -> int | float:
@@ -62,6 +68,7 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
     score = 0.0
     generations = 0
     model: str | None = None
+    signal: str | None = None
     settings: dict = {}
     description_lines: list[str] = []
 
@@ -75,6 +82,7 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
                     "\n".join(description_lines).strip(),
                     model=model,
                     settings=dict(settings),
+                    signal=signal,
                 )
             )
 
@@ -84,7 +92,7 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
             flush()
             title = heading_match.group(1).strip()
             score, generations = 0.0, 0
-            model, settings = None, {}
+            model, signal, settings = None, None, {}
             description_lines = []
             continue
         if title is None:
@@ -99,6 +107,8 @@ def parse_interests(text: str) -> tuple[str, list[Interest]]:
             key, value = kv_match.group(1), kv_match.group(2).strip()
             if key == "model":
                 model = value
+            elif key == "signal":
+                signal = value
             else:
                 settings[key] = _coerce_setting(key, value)
             continue
@@ -118,6 +128,8 @@ def render_interests(interests: list[Interest], preamble: str = "") -> str:
         ]
         if interest.model:
             lines.append(f"model: {interest.model}")
+        if interest.signal:
+            lines.append(f"signal: {interest.signal}")
         for key in ("steps", "cfg", "width", "height", "seed"):
             if key in interest.settings:
                 lines.append(f"{key}: {interest.settings[key]}")

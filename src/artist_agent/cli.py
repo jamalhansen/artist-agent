@@ -27,12 +27,16 @@ from .core import (
     item_stem,
     items_dir,
     render_item_note,
+    render_signal_note,
     resolve_ai_artist_dir,
+    signal_stem,
+    signals_dir,
 )
 from .drawthings import DrawThingsError, generate_image
 from .interests import parse_interests, pick_direction, record_outcome, render_interests
 from .prompt import compose_prompt
 from .scoring import SelfScore, self_score
+from .signals import fetch_current_event
 
 _TOOL_NAME = "artist-agent"
 _TOOL = register_tool(_TOOL_NAME)
@@ -90,6 +94,12 @@ def generate(
     chosen = pick_direction(interests)
     typer.echo(f"Direction: {chosen.title}")
 
+    current_event = None
+    if chosen.signal == "content-discovery":
+        current_event = fetch_current_event()
+        if current_event and verbose:
+            typer.echo(f"Current-event signal: {current_event.title}")
+
     try:
         llm_provider = resolve_provider(PROVIDERS, provider, model, no_llm=no_llm)
     except Exception as e:  # noqa: BLE001 - top-level CLI boundary: report cleanly and exit, don't show a raw traceback
@@ -97,7 +107,11 @@ def generate(
         raise typer.Exit(1)
 
     with timed_run(_TOOL_NAME, getattr(llm_provider, "model", None)) as run:
-        image_prompt = compose_prompt(llm_provider, chosen.description)
+        image_prompt = compose_prompt(
+            llm_provider,
+            chosen.description,
+            current_event=current_event.title if current_event else None,
+        )
         run.item_count = 1
     if verbose:
         typer.echo(f"Prompt: {image_prompt}")
@@ -148,6 +162,8 @@ def generate(
         self_score=critique.score,
         self_score_notes=critique.notes,
         models=models_used,
+        current_event_title=current_event.title if current_event else None,
+        current_event_source_url=current_event.source_url if current_event else None,
     )
     stem = item_stem(item)
     item.image_filename = f"{stem}.png"
@@ -159,6 +175,14 @@ def generate(
     (img_dir / item.image_filename).write_bytes(image_bytes)
     note_path = it_dir / f"{stem}.md"
     note_path.write_text(render_item_note(item, f"../images/{item.image_filename}"), encoding="utf-8")
+
+    if current_event:
+        sig_dir = signals_dir(base)
+        sig_dir.mkdir(parents=True, exist_ok=True)
+        sig_path = sig_dir / f"{signal_stem(current_event.title, now)}.md"
+        sig_path.write_text(
+            render_signal_note(current_event.title, current_event.source_url, now), encoding="utf-8"
+        )
 
     updated_interests = record_outcome(interests, chosen.title, critique.score)
     i_path.write_text(render_interests(updated_interests, preamble=preamble), encoding="utf-8")
