@@ -101,7 +101,7 @@ def generate(
             typer.echo(f"Current-event signal: {current_event.title}")
 
     try:
-        llm_provider = resolve_provider(PROVIDERS, provider, model, no_llm=no_llm)
+        llm_provider = resolve_provider(PROVIDERS, provider, model, no_llm=no_llm, tool_name=_TOOL_NAME)
     except Exception as e:  # noqa: BLE001 - top-level CLI boundary: report cleanly and exit, don't show a raw traceback
         typer.echo(f"Error initializing provider '{provider}': {e}", err=True)
         raise typer.Exit(1)
@@ -139,7 +139,7 @@ def generate(
 
     vision_llm = None
     try:
-        vision_llm = resolve_provider(PROVIDERS, vision_provider, vision_model, no_llm=no_llm)
+        vision_llm = resolve_provider(PROVIDERS, vision_provider, vision_model, no_llm=no_llm, tool_name=_TOOL_NAME)
         critique = self_score(vision_llm, chosen.description, image_prompt, image_bytes)
     except Exception as e:  # noqa: BLE001 - self-scoring failure shouldn't discard a real generation
         typer.echo(f"Warning: self-scoring failed, recording without a score: {e}", err=True)
