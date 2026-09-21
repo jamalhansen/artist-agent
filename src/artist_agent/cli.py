@@ -14,7 +14,7 @@ from local_first_common.cli import (
 )
 from local_first_common.config import get_setting
 from local_first_common.providers import PROVIDERS
-from local_first_common.tracking import register_tool, timed_run
+from local_first_common.tracking import register_tool
 
 from .core import (
     DRAW_THINGS_CLI_PATH,
@@ -106,13 +106,12 @@ def generate(
         typer.echo(f"Error initializing provider '{provider}': {e}", err=True)
         raise typer.Exit(1)
 
-    with timed_run(_TOOL_NAME, getattr(llm_provider, "model", None)) as run:
-        image_prompt = compose_prompt(
-            llm_provider,
-            chosen.description,
-            current_event=current_event.title if current_event else None,
-        )
-        run.item_count = 1
+    llm_provider.item_count = 1
+    image_prompt = compose_prompt(
+        llm_provider,
+        chosen.description,
+        current_event=current_event.title if current_event else None,
+    )
     if verbose:
         typer.echo(f"Prompt: {image_prompt}")
 
