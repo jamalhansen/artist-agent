@@ -33,8 +33,12 @@ from .core import (
     signals_dir,
 )
 from .drawthings import DrawThingsError, generate_image
+from .feedback import apply_scores, collect, load_config
 from .interests import parse_interests, pick_direction, record_outcome, render_interests
 from .prompt import compose_prompt
+from .reflect import apply as apply_revisions
+from .reflect import record as record_reflection
+from .reflect import revise, unconsumed
 from .scoring import SelfScore, self_score
 from .signals import fetch_current_event
 
@@ -90,6 +94,13 @@ def generate(
     if not interests:
         typer.echo(f"Error: {i_path} has no parseable interests", err=True)
         raise typer.Exit(1)
+
+    artist = load_config(base)
+    if artist.learns_from == "jamal":
+        # Scores come from Jamal's ratings, recomputed each run since ratings arrive days later.
+        interests = apply_scores(interests, collect(artist, base))
+        if not dry_run:
+            i_path.write_text(render_interests(interests, preamble=preamble), encoding="utf-8")
 
     chosen = pick_direction(interests)
     typer.echo(f"Direction: {chosen.title}")
@@ -163,6 +174,7 @@ def generate(
         models=models_used,
         current_event_title=current_event.title if current_event else None,
         current_event_source_url=current_event.source_url if current_event else None,
+        artist=artist.name,
     )
     stem = item_stem(item)
     item.image_filename = f"{stem}.png"
@@ -183,12 +195,46 @@ def generate(
             render_signal_note(current_event.title, current_event.source_url, now), encoding="utf-8"
         )
 
-    updated_interests = record_outcome(interests, chosen.title, critique.score)
-    i_path.write_text(render_interests(updated_interests, preamble=preamble), encoding="utf-8")
+    if artist.learns_from == "self":
+        updated_interests = record_outcome(interests, chosen.title, critique.score)
+        i_path.write_text(render_interests(updated_interests, preamble=preamble), encoding="utf-8")
 
     typer.echo(f"Image:  {img_dir / item.image_filename}")
     typer.echo(f"Item:   {note_path}")
     typer.echo(f"\nDone. self_score={critique.score:.2f}")
+
+
+
+@app.command()
+def reflect(
+    ai_artist_dir: Annotated[
+        str | None, typer.Option("--dir", "-d", help="Root folder for images/items/interests")
+    ] = None,
+    provider: Annotated[str | None, typer.Option("--provider", "-p", help="LLM for rewriting the directions")] = None,
+    model: Annotated[str | None, typer.Option("--model", "-m", help="Model for rewriting the directions")] = None,
+    min_new: Annotated[int, typer.Option("--min-new", help="Skip unless this many new pieces of feedback exist")] = 3,
+    dry_run: Annotated[bool, dry_run_option()] = False,
+) -> None:
+    """Rewrite this artist's direction descriptions from the feedback it learns from."""
+    provider = get_setting(_TOOL_NAME, "reflect_provider", cli_val=provider, default="claude-code")
+    model = get_setting(_TOOL_NAME, "reflect_model", cli_val=model, default="sonnet")
+    base = resolve_ai_artist_dir(ai_artist_dir)
+    i_path = interests_path(base)
+    preamble, interests = parse_interests(i_path.read_text(encoding="utf-8"))
+    artist = load_config(base)
+    new = unconsumed(base, collect(artist, base))
+    if len(new) < min_new:
+        typer.echo(f"{artist.name}: {len(new)} new piece(s) of feedback, waiting for {min_new}.")
+        return
+    llm = resolve_provider(PROVIDERS, provider, model, fallback=False, tool_name=_TOOL_NAME)
+    revised, log = apply_revisions(interests, revise(llm, interests, new, artist.learns_from), new)
+    typer.echo(f"{artist.name} (learns from {artist.learns_from}), {len(new)} new piece(s) of feedback:")
+    typer.echo("\n".join(log) or "- no changes")
+    if dry_run:
+        return
+    snapshot = record_reflection(base, preamble, interests, revised, log, new, datetime.now().astimezone())
+    i_path.write_text(render_interests(revised, preamble=preamble), encoding="utf-8")
+    typer.echo(f"Previous directions archived: {snapshot}")
 
 
 if __name__ == "__main__":

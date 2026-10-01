@@ -13,8 +13,10 @@ that hasn't obviously been done before.
 
 Rules:
 - Avoid genre cliches: no rain-slicked streets, no giant neon kanji signs, no "hacker in
-  a hoodie," no glowing blue circuit-board skin. If the direction mentions cyberpunk,
-  find an ordinary, specific, slightly-off detail instead of the genre's stock imagery.
+  a hoodie," no glowing blue circuit-board skin. Avoiding the cliche is not avoiding the
+  genre: if the direction is cyberpunk or otherwise futuristic, the image still has to
+  read as the future -- invent technology, materials, and infrastructure that don't
+  exist yet rather than retreating to an ordinary present-day scene.
 - Be concrete about composition, lighting, and color -- vague mood words ("moody",
   "atmospheric") without a concrete visual to hang them on are worse than nothing.
 - Output ONLY the prompt itself, as one paragraph. No preamble, no title, no

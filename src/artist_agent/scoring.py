@@ -14,9 +14,12 @@ Score honestly, not encouragingly -- this score is used to decide whether to kee
 exploring this creative direction, so a generic or cliche-ridden result must score low
 even if it's technically well-composed.
 
-Rate 0.0-1.0 on:
-- Does it actually explore the stated direction, or is it generic stock imagery that
-  could illustrate almost anything?
+Rate 0.0-1.0 on, in order of weight:
+- Is it genuinely interesting -- would someone stop and look twice? Following the
+  direction's rules is not the same thing; a compliant but forgettable image scores low.
+- Does it actually explore the stated direction, including its genre (a futuristic
+  direction has to read as the future), or is it generic imagery that could illustrate
+  almost anything?
 - Does it avoid the genre cliches the direction explicitly asked to avoid?
 - Composition and visual coherence (not photorealism -- this is generative art).
 

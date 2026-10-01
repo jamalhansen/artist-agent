@@ -82,6 +82,7 @@ class Item:
     status: str = "new"
     current_event_title: str | None = None
     current_event_source_url: str | None = None
+    artist: str | None = None
 
 
 def item_stem(item: Item) -> str:
@@ -143,6 +144,7 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
         prompt=item.prompt,
         settings=item.settings,
         models=item.models,
+        artist=item.artist,
         self_score=item.self_score,
         human_score=item.human_score,
         status=item.status,
