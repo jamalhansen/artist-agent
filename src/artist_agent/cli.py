@@ -116,7 +116,7 @@ def generate(
         llm_provider = resolve_provider(PROVIDERS, provider, model, no_llm=no_llm, tool_name=_TOOL_NAME)
     except Exception as e:  # noqa: BLE001 - top-level CLI boundary: report cleanly and exit, don't show a raw traceback
         typer.echo(f"Error initializing provider '{provider}': {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     # Heartbeat after each stage so process-doctor judges progress by the beat, not by
     # CPU: image generation and the vision critique are long, mostly-idle waits. Replaces
@@ -149,7 +149,7 @@ def generate(
         )
     except DrawThingsError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     heartbeat()
 
     now = datetime.now().astimezone()
