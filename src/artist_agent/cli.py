@@ -13,6 +13,7 @@ from local_first_common.cli import (
     resolve_provider,
 )
 from local_first_common.config import get_setting
+from local_first_common.heartbeat import heartbeat
 from local_first_common.providers import PROVIDERS
 from local_first_common.tracking import register_tool
 
@@ -117,12 +118,17 @@ def generate(
         typer.echo(f"Error initializing provider '{provider}': {e}", err=True)
         raise typer.Exit(1)
 
+    # Heartbeat after each stage so process-doctor judges progress by the beat, not by
+    # CPU: image generation and the vision critique are long, mostly-idle waits. Replaces
+    # the 600 s kill-watchdog that artist-agent-run carried from 2026-09-13 to 2026-10-04.
+    heartbeat()
     llm_provider.item_count = 1
     image_prompt = compose_prompt(
         llm_provider,
         chosen.description,
         current_event=current_event.title if current_event else None,
     )
+    heartbeat()
     if verbose:
         typer.echo(f"Prompt: {image_prompt}")
 
@@ -144,6 +150,7 @@ def generate(
     except DrawThingsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
+    heartbeat()
 
     now = datetime.now().astimezone()
 
@@ -154,6 +161,7 @@ def generate(
     except Exception as e:  # noqa: BLE001 - self-scoring failure shouldn't discard a real generation
         typer.echo(f"Warning: self-scoring failed, recording without a score: {e}", err=True)
         critique = SelfScore(score=0.0, notes=f"self-scoring failed: {e}")
+    heartbeat()
     if verbose:
         typer.echo(f"Self-critique ({critique.score:.2f}): {critique.notes}")
 
@@ -226,8 +234,10 @@ def reflect(
     if len(new) < min_new:
         typer.echo(f"{artist.name}: {len(new)} new piece(s) of feedback, waiting for {min_new}.")
         return
+    heartbeat()  # one long LLM call follows; see generate() for why process-doctor needs this
     llm = resolve_provider(PROVIDERS, provider, model, fallback=False, tool_name=_TOOL_NAME)
     revised, log = apply_revisions(interests, revise(llm, interests, new, artist.learns_from), new)
+    heartbeat()
     typer.echo(f"{artist.name} (learns from {artist.learns_from}), {len(new)} new piece(s) of feedback:")
     typer.echo("\n".join(log) or "- no changes")
     if dry_run:
