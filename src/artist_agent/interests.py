@@ -21,6 +21,7 @@ which pulls the most recently captured content-discovery-agent item from Context
 inbox as mood/tempo inspiration for the composed prompt (see signals.py) -- not a
 literal depiction, per prompt.py's system prompt rules.
 """
+
 import random
 import re
 from dataclasses import dataclass, field, replace

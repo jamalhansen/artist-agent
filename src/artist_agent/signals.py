@@ -11,6 +11,7 @@ Best-effort by design: if Contexta's inbox is missing, empty, or unreadable,
 callers get None and generation proceeds exactly as it did before this
 existed. A missing signal is never a reason to fail a whole day's image.
 """
+
 import logging
 import os
 import re

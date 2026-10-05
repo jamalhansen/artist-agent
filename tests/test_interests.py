@@ -101,15 +101,11 @@ class TestRenderInterests:
         assert preamble2 == preamble
 
     def test_omits_preamble_block_when_empty(self):
-        rendered = render_interests(
-            [Interest("Only one", 0.5, 1, "desc")], preamble=""
-        )
+        rendered = render_interests([Interest("Only one", 0.5, 1, "desc")], preamble="")
         assert rendered.startswith("## Only one")
 
     def test_renders_model_and_settings_when_present(self):
-        interest = Interest(
-            "Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5}
-        )
+        interest = Interest("Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5})
         rendered = render_interests([interest])
         assert "model: some_other_model.ckpt" in rendered
         assert "steps: 30" in rendered
@@ -121,9 +117,7 @@ class TestRenderInterests:
         assert "steps:" not in rendered
 
     def test_round_trips_model_and_settings(self):
-        interest = Interest(
-            "Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5}
-        )
+        interest = Interest("Custom", 0.4, 1, "desc", model="some_other_model.ckpt", settings={"steps": 30, "cfg": 7.5})
         rendered = render_interests([interest])
         _, parsed_back = parse_interests(rendered)
         assert parsed_back[0] == interest

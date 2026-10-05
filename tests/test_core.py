@@ -146,10 +146,7 @@ class TestSignalsDir:
 
 class TestSignalStem:
     def test_combines_date_and_slug(self):
-        assert (
-            signal_stem("Some Real Headline", datetime(2026, 9, 18, tzinfo=UTC))
-            == "2026-09-18-some-real-headline"
-        )
+        assert signal_stem("Some Real Headline", datetime(2026, 9, 18, tzinfo=UTC)) == "2026-09-18-some-real-headline"
 
 
 class TestRenderSignalNote:

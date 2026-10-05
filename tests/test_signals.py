@@ -1,7 +1,9 @@
 from artist_agent.signals import CurrentEvent, fetch_current_event
 
 
-def _write_inbox_item(dir_, filename, *, source_type="content-discovery-agent", captured, title, source_url="https://example.com"):
+def _write_inbox_item(
+    dir_, filename, *, source_type="content-discovery-agent", captured, title, source_url="https://example.com"
+):
     dir_.mkdir(parents=True, exist_ok=True)
     (dir_ / filename).write_text(
         f"---\nsource_type: {source_type}\ncaptured: {captured}\nsource_url: {source_url}\n---\n\n# {title}\n\nbody text\n"
@@ -17,9 +19,7 @@ class TestFetchCurrentEvent:
         assert fetch_current_event(tmp_path) is None
 
     def test_ignores_items_from_other_sources(self, tmp_path):
-        _write_inbox_item(
-            tmp_path, "a.md", source_type="voice-memo", captured="2026-09-17", title="Not this one"
-        )
+        _write_inbox_item(tmp_path, "a.md", source_type="voice-memo", captured="2026-09-17", title="Not this one")
         assert fetch_current_event(tmp_path) is None
 
     def test_returns_most_recently_captured_item(self, tmp_path):
@@ -37,7 +37,5 @@ class TestFetchCurrentEvent:
 
     def test_item_without_captured_date_is_skipped(self, tmp_path):
         tmp_path.mkdir(exist_ok=True)
-        (tmp_path / "no-date.md").write_text(
-            "---\nsource_type: content-discovery-agent\n---\n\n# No date item\n"
-        )
+        (tmp_path / "no-date.md").write_text("---\nsource_type: content-discovery-agent\n---\n\n# No date item\n")
         assert fetch_current_event(tmp_path) is None

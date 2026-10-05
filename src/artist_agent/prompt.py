@@ -1,4 +1,5 @@
 """Turns a chosen interest's free-text description into a concrete Draw Things prompt."""
+
 from local_first_common.providers.base import BaseProvider
 
 SYSTEM_PROMPT = """\
@@ -30,9 +31,7 @@ from sound to shape, applied to a real event instead.
 """
 
 
-def compose_prompt(
-    provider: BaseProvider, interest_description: str, current_event: str | None = None
-) -> str:
+def compose_prompt(provider: BaseProvider, interest_description: str, current_event: str | None = None) -> str:
     """Send an interest's description to the provider and return a ready-to-use prompt.
 
     current_event, when given, is a real topic (a headline/title, not a full
@@ -41,8 +40,5 @@ def compose_prompt(
     """
     user_message = interest_description
     if current_event:
-        user_message += (
-            f"\n\nToday's real-world signal to draw mood from (do not depict literally): "
-            f"{current_event}"
-        )
+        user_message += f"\n\nToday's real-world signal to draw mood from (do not depict literally): {current_event}"
     return provider.complete(SYSTEM_PROMPT, user_message).strip()

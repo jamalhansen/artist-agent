@@ -2,6 +2,7 @@
 """Artist Agent CLI -- one command, one image: pick a direction, compose a prompt,
 generate via Draw Things, self-critique, write a portable item note, fold the
 outcome back into the interests file."""
+
 from datetime import datetime
 from typing import Annotated
 
@@ -51,27 +52,19 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def generate(
-    provider: Annotated[
-        str | None, typer.Option("--provider", "-p", help="LLM backend for prompt composition")
-    ] = None,
-    model: Annotated[
-        str | None, typer.Option("--model", "-m", help="Override the prompt-composition model")
-    ] = None,
+    provider: Annotated[str | None, typer.Option("--provider", "-p", help="LLM backend for prompt composition")] = None,
+    model: Annotated[str | None, typer.Option("--model", "-m", help="Override the prompt-composition model")] = None,
     vision_provider: Annotated[
         str | None,
         typer.Option("--vision-provider", help="LLM backend for self-critique (must support vision)"),
     ] = None,
-    vision_model: Annotated[
-        str | None, typer.Option("--vision-model", help="Override the self-critique model")
-    ] = None,
+    vision_model: Annotated[str | None, typer.Option("--vision-model", help="Override the self-critique model")] = None,
     ai_artist_dir: Annotated[
         str | None, typer.Option("--dir", "-d", help="Root folder for images/items/interests")
     ] = None,
     dry_run: Annotated[bool, dry_run_option()] = False,
     no_llm: Annotated[bool, no_llm_option()] = False,
-    verbose: Annotated[
-        bool, typer.Option("--verbose", help="Print the composed prompt and self-critique")
-    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Print the composed prompt and self-critique")] = False,
 ) -> None:
     """Generate one image end-to-end and record it as a new item."""
     provider = get_setting(_TOOL_NAME, "provider", cli_val=provider, default="local")
@@ -199,9 +192,7 @@ def generate(
         sig_dir = signals_dir(base)
         sig_dir.mkdir(parents=True, exist_ok=True)
         sig_path = sig_dir / f"{signal_stem(current_event.title, now)}.md"
-        sig_path.write_text(
-            render_signal_note(current_event.title, current_event.source_url, now), encoding="utf-8"
-        )
+        sig_path.write_text(render_signal_note(current_event.title, current_event.source_url, now), encoding="utf-8")
 
     if artist.learns_from == "self":
         updated_interests = record_outcome(interests, chosen.title, critique.score)
@@ -210,7 +201,6 @@ def generate(
     typer.echo(f"Image:  {img_dir / item.image_filename}")
     typer.echo(f"Item:   {note_path}")
     typer.echo(f"\nDone. self_score={critique.score:.2f}")
-
 
 
 @app.command()

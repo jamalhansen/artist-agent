@@ -1,5 +1,6 @@
 """Self-critique: a vision-capable LLM looks at the generated image and scores it
 against the direction and prompt it came from."""
+
 import base64
 from dataclasses import dataclass
 
@@ -45,7 +46,5 @@ def self_score(
     image_b64 = base64.b64encode(image_bytes).decode()
     user_prompt = f"Direction being explored: {interest_description}\n\nPrompt used: {image_prompt}"
 
-    result = vision_provider.complete(
-        SYSTEM_PROMPT, user_prompt, response_model=SelfScoreModel, images=[image_b64]
-    )
+    result = vision_provider.complete(SYSTEM_PROMPT, user_prompt, response_model=SelfScoreModel, images=[image_b64])
     return SelfScore(score=result.score, notes=result.notes)

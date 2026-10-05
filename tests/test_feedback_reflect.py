@@ -8,7 +8,9 @@ from artist_agent.feedback import ArtistConfig, apply_scores, collect, load_conf
 from artist_agent.interests import Interest
 
 
-def _item(base: Path, stem: str, interest: str, self_score: float, human=None, notes="_not yet reviewed_", day="2026-10-02"):
+def _item(
+    base: Path, stem: str, interest: str, self_score: float, human=None, notes="_not yet reviewed_", day="2026-10-02"
+):
     d = base / "items"
     d.mkdir(parents=True, exist_ok=True)
     human_line = f"human_score: {human}\n" if human is not None else "human_score: null\n"
@@ -87,10 +89,14 @@ class FakeProvider:
 def test_reflection_only_revises_directions_with_feedback(tmp_path):
     interests = [Interest("Cyber", 0.5, 2, "old cyber", settings={"steps": 30}), Interest("Wire", 0, 0, "old wire")]
     fb = [reflect.Feedback("a1", "Cyber", "p", 0.25, "not cyberpunk")]
-    llm = FakeProvider(reflect.Reflection(directions=[
-        reflect.Revision(title="Cyber", description="new cyber", change="ask for the future"),
-        reflect.Revision(title="Wire", description="sneaky rewrite", change="changed anyway"),
-    ]))
+    llm = FakeProvider(
+        reflect.Reflection(
+            directions=[
+                reflect.Revision(title="Cyber", description="new cyber", change="ask for the future"),
+                reflect.Revision(title="Wire", description="sneaky rewrite", change="changed anyway"),
+            ]
+        )
+    )
     revised, log = reflect.apply(interests, reflect.revise(llm, interests, fb, "jamal"), fb)
     assert [i.description for i in revised] == ["new cyber", "old wire"]
     assert revised[0].settings == {"steps": 30}
@@ -103,7 +109,9 @@ def test_record_archives_logs_and_consumes(tmp_path):
     before = [Interest("Cyber", 0, 0, "old")]
     fb = [reflect.Feedback("a1", "Cyber", "p", 0.25, "")]
     assert [f.stem for f in reflect.unconsumed(tmp_path, fb)] == ["a1"]
-    snap = reflect.record(tmp_path, "# Pre", before, before, ["- **Cyber**: x"], fb, datetime(2026, 10, 4, 9, 0).astimezone())
+    snap = reflect.record(
+        tmp_path, "# Pre", before, before, ["- **Cyber**: x"], fb, datetime(2026, 10, 4, 9, 0).astimezone()
+    )
     assert snap.name == "interests-2026-10-04-0900.md" and "old" in snap.read_text()
     assert "## 2026-10-04 (1 pieces of feedback)" in (tmp_path / "_state" / "history" / "changelog.md").read_text()
     assert reflect.unconsumed(tmp_path, fb) == []

@@ -104,13 +104,15 @@ def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
         if score is None:
             continue
         notes = match.group(1).strip() if match else ""
-        out.append(Feedback(
-            stem=path.stem,
-            interest=str(post.metadata.get("interest", "")),
-            prompt=str(post.metadata.get("prompt", "")),
-            score=float(score),
-            notes="" if notes.startswith("_not yet") else notes,
-        ))
+        out.append(
+            Feedback(
+                stem=path.stem,
+                interest=str(post.metadata.get("interest", "")),
+                prompt=str(post.metadata.get("prompt", "")),
+                score=float(score),
+                notes="" if notes.startswith("_not yet") else notes,
+            )
+        )
     return out
 
 
@@ -121,6 +123,7 @@ def apply_scores(interests: list[Interest], feedback: list[Feedback]) -> list[In
         by_title.setdefault(f.interest, []).append(f.score)
     return [
         replace(i, score=sum(by_title[i.title]) / len(by_title[i.title]), generations=len(by_title[i.title]))
-        if i.title in by_title else replace(i, score=0.0, generations=0)
+        if i.title in by_title
+        else replace(i, score=0.0, generations=0)
         for i in interests
     ]

@@ -28,6 +28,7 @@ runner-images all report the same class of failure) -- remote mode moves
 that risky one-time Metal initialization into a long-lived server process
 instead of repeating it fresh every single scheduled run.
 """
+
 import subprocess
 import tempfile
 from pathlib import Path
@@ -77,9 +78,12 @@ def generate_image(
         cmd = [
             cli_path,
             "generate",
-            "--model", model,
-            "--prompt", prompt,
-            "--output", str(output_path),
+            "--model",
+            model,
+            "--prompt",
+            prompt,
+            "--output",
+            str(output_path),
         ]
         if remote_url:
             cmd += ["--remote", "--remote-url", remote_url, "--remote-port", str(remote_port)]

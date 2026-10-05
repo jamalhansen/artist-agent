@@ -5,6 +5,7 @@ plain image files -- deliberately not Obsidian-specific (no wikilinks, no embeds
 not a database, so the same folder works unmodified as a vault, a static-site source,
 or neither, without a migration later.
 """
+
 import os
 import re
 from dataclasses import dataclass

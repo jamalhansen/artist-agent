@@ -52,17 +52,23 @@ def build_user(interests: list[Interest], feedback: list[Feedback]) -> str:
     for i in interests:
         rows = [f for f in feedback if f.interest == i.title]
         lines = [f"## {i.title}", i.description.strip(), "", f"Feedback ({len(rows)} pieces):"]
-        lines += [f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}" for f in rows] or ["- none"]
+        lines += [f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}" for f in rows] or [
+            "- none"
+        ]
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
 
-def revise(provider: BaseProvider, interests: list[Interest], feedback: list[Feedback], learns_from: str) -> list[Revision]:
+def revise(
+    provider: BaseProvider, interests: list[Interest], feedback: list[Feedback], learns_from: str
+) -> list[Revision]:
     system = SYSTEM_PROMPT.format(source=FEEDBACK_SOURCE[learns_from])
     return provider.complete(system, build_user(interests, feedback), response_model=Reflection).directions
 
 
-def apply(interests: list[Interest], revisions: list[Revision], feedback: list[Feedback]) -> tuple[list[Interest], list[str]]:
+def apply(
+    interests: list[Interest], revisions: list[Revision], feedback: list[Feedback]
+) -> tuple[list[Interest], list[str]]:
     """Revised interests and a changelog. Only directions that got feedback may change."""
     by_title = {r.title.strip(): r for r in revisions}
     with_feedback = {f.interest for f in feedback}
@@ -70,7 +76,9 @@ def apply(interests: list[Interest], revisions: list[Revision], feedback: list[F
     for i in interests:
         r = by_title.get(i.title)
         if r and i.title in with_feedback and r.description.strip() and r.change.strip().lower() != "unchanged":
-            out.append(Interest(i.title, i.score, i.generations, r.description.strip(), i.model, dict(i.settings), i.signal))
+            out.append(
+                Interest(i.title, i.score, i.generations, r.description.strip(), i.model, dict(i.settings), i.signal)
+            )
             log.append(f"- **{i.title}**: {r.change.strip()}")
         else:
             out.append(i)
@@ -87,8 +95,15 @@ def unconsumed(base: Path, feedback: list[Feedback]) -> list[Feedback]:
     return [f for f in feedback if f.stem not in seen]
 
 
-def record(base: Path, preamble: str, before: list[Interest], after: list[Interest],
-           log: list[str], used: list[Feedback], now: datetime) -> Path:
+def record(
+    base: Path,
+    preamble: str,
+    before: list[Interest],
+    after: list[Interest],
+    log: list[str],
+    used: list[Feedback],
+    now: datetime,
+) -> Path:
     """Archive the pre-revision file, append the changelog, mark the feedback consumed."""
     history = base / "_state" / "history"
     history.mkdir(parents=True, exist_ok=True)
@@ -96,7 +111,11 @@ def record(base: Path, preamble: str, before: list[Interest], after: list[Intere
     snapshot = history / f"interests-{stamp}.md"
     snapshot.write_text(render_interests(before, preamble=preamble), encoding="utf-8")
     with (history / "changelog.md").open("a", encoding="utf-8") as f:
-        f.write(f"\n## {now.date().isoformat()} ({len(used)} pieces of feedback)\n" + ("\n".join(log) or "- no changes") + "\n")
+        f.write(
+            f"\n## {now.date().isoformat()} ({len(used)} pieces of feedback)\n"
+            + ("\n".join(log) or "- no changes")
+            + "\n"
+        )
     with consumed_path(base).open("a", encoding="utf-8") as f:
         f.write("".join(f"{u.stem}\n" for u in used))
     return snapshot
