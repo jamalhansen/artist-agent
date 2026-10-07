@@ -33,7 +33,7 @@ class TestFetchCurrentEvent:
         (tmp_path / "broken.md").write_bytes(b"\xff\xfe not valid frontmatter at all {{{")
         _write_inbox_item(tmp_path, "good.md", captured="2026-09-17", title="Fine item")
         event = fetch_current_event(tmp_path)
-        assert event.title == "Fine item"
+        assert event is not None and event.title == "Fine item"
 
     def test_item_without_captured_date_is_skipped(self, tmp_path):
         tmp_path.mkdir(exist_ok=True)

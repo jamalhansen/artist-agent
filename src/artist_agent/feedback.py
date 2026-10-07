@@ -109,7 +109,7 @@ def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
                 stem=path.stem,
                 interest=str(post.metadata.get("interest", "")),
                 prompt=str(post.metadata.get("prompt", "")),
-                score=float(score),
+                score=float(str(score)),
                 notes="" if notes.startswith("_not yet") else notes,
             )
         )

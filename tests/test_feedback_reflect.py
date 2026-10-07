@@ -1,7 +1,9 @@
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
+from local_first_common.providers.base import BaseProvider
 
 from artist_agent import reflect
 from artist_agent.feedback import ArtistConfig, apply_scores, collect, load_config
@@ -77,13 +79,27 @@ def test_apply_scores_means_and_resets_unscored():
     assert (out[1].score, out[1].generations) == (0.0, 0)
 
 
-class FakeProvider:
+class FakeProvider(BaseProvider):
+    """Returns a preset result as-is (no validation), recording each call."""
+
+    provider_name = "fake"
+    default_model = "fake"
+    known_models: ClassVar[list[str]] = ["fake"]
+    models_url = ""
+
     def __init__(self, result):
+        super().__init__()
         self.result, self.calls = result, []
 
-    def complete(self, system, user, response_model=None):
+    def complete(self, system, user, response_model=None, images=None, max_retries=1, rate_limit_retries=3) -> Any:
         self.calls.append((system, user))
         return self.result
+
+    def _complete(self, system, user, response_model=None, images=None):
+        raise NotImplementedError
+
+    async def _acomplete(self, system, user, response_model=None, images=None):
+        raise NotImplementedError
 
 
 def test_reflection_only_revises_directions_with_feedback(tmp_path):

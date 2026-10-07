@@ -67,13 +67,13 @@ def generate(
     verbose: Annotated[bool, typer.Option("--verbose", help="Print the composed prompt and self-critique")] = False,
 ) -> None:
     """Generate one image end-to-end and record it as a new item."""
-    provider = get_setting(_TOOL_NAME, "provider", cli_val=provider, default="local")
+    provider = str(get_setting(_TOOL_NAME, "provider", cli_val=provider, default="local"))
     model = get_setting(
         _TOOL_NAME, "model", cli_val=model, default="llama3.2:3b" if provider in ("local", "ollama") else None
     )
     # Vision defaults to anthropic regardless of the text provider's default: self-critique
     # needs a vision-capable model, and no local model here has one installed.
-    vision_provider = get_setting(_TOOL_NAME, "vision_provider", cli_val=vision_provider, default="anthropic")
+    vision_provider = str(get_setting(_TOOL_NAME, "vision_provider", cli_val=vision_provider, default="anthropic"))
     vision_model = get_setting(_TOOL_NAME, "vision_model", cli_val=vision_model, default=None)
 
     dry_run = resolve_dry_run(dry_run, no_llm)
@@ -214,7 +214,7 @@ def reflect(
     dry_run: Annotated[bool, dry_run_option()] = False,
 ) -> None:
     """Rewrite this artist's direction descriptions from the feedback it learns from."""
-    provider = get_setting(_TOOL_NAME, "reflect_provider", cli_val=provider, default="claude-code")
+    provider = str(get_setting(_TOOL_NAME, "reflect_provider", cli_val=provider, default="claude-code"))
     model = get_setting(_TOOL_NAME, "reflect_model", cli_val=model, default="sonnet")
     base = resolve_ai_artist_dir(ai_artist_dir)
     i_path = interests_path(base)
