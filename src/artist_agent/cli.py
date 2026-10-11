@@ -19,6 +19,7 @@ from local_first_common.heartbeat import heartbeat
 from local_first_common.providers import PROVIDERS
 from local_first_common.tracking import register_tool
 
+from .catalog import defaults_for, load_catalog
 from .core import (
     DRAW_THINGS_CLI_PATH,
     DRAW_THINGS_MODEL,
@@ -135,7 +136,7 @@ def generate(
     # A direction may pin steps/cfg/size/seed; everything else is draw-things-cli's recommended
     # setting for the model. The seed is always chosen here so the item records it and a piece
     # can be regenerated (2026-10-11: 43 pieces had `settings: {}` and no way back to any of them).
-    settings = dict(chosen.settings)
+    settings = {**defaults_for(load_catalog(_TOOL_NAME), model), **chosen.settings}
     settings.setdefault("seed", random.randrange(2**32))
     try:
         image_bytes = generate_image(
@@ -232,7 +233,9 @@ def reflect(
         return
     heartbeat()  # one long LLM call follows; see generate() for why process-doctor needs this
     llm = resolve_provider(PROVIDERS, provider, model, fallback=False, tool_name=_TOOL_NAME)
-    revised, log = apply_revisions(interests, revise(llm, interests, new, artist.learns_from), new)
+    catalog = load_catalog(_TOOL_NAME)
+    reflection = revise(llm, interests, new, artist.learns_from, catalog, DRAW_THINGS_MODEL)
+    revised, log = apply_revisions(interests, reflection, new, catalog)
     heartbeat()
     typer.echo(f"{artist.name} (learns from {artist.learns_from}), {len(new)} new piece(s) of feedback:")
     typer.echo("\n".join(log) or "- no changes")

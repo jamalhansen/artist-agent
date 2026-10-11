@@ -29,6 +29,7 @@ that risky one-time Metal initialization into a long-lived server process
 instead of repeating it fresh every single scheduled run.
 """
 
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +46,47 @@ _SETTING_FLAGS = {
     "height": "--height",
     "seed": "--seed",
 }
+
+# Draw Things' SamplerType enum. 10 = Euler A Trailing is confirmed from the metadata Draw
+# Things itself wrote into the April 2026 exports ("Sampler: Euler A Trailing" beside
+# "sampler": 10); the rest follow the enum order in draw-things-community's DataModels.
+SAMPLERS = {
+    "DPM++ 2M Karras": 0,
+    "Euler A": 1,
+    "DDIM": 2,
+    "PLMS": 3,
+    "DPM++ SDE Karras": 4,
+    "UniPC": 5,
+    "LCM": 6,
+    "Euler A Substep": 7,
+    "DPM++ SDE Substep": 8,
+    "TCD": 9,
+    "Euler A Trailing": 10,
+    "DPM++ SDE Trailing": 11,
+    "DPM++ 2M AYS": 12,
+    "Euler A AYS": 13,
+    "DPM++ SDE AYS": 14,
+    "DPM++ 2M Trailing": 15,
+    "DDIM Trailing": 16,
+    "UniPC Trailing": 17,
+    "UniPC AYS": 18,
+}
+
+
+def config_overrides(settings: dict) -> dict:
+    """Settings with no CLI flag, as a JSGenerationConfiguration override (--config-json)."""
+    out: dict = {}
+    sampler = settings.get("sampler")
+    if sampler is not None:
+        if isinstance(sampler, int):
+            out["sampler"] = sampler
+        elif str(sampler) in SAMPLERS:
+            out["sampler"] = SAMPLERS[str(sampler)]
+        else:
+            raise DrawThingsError(f"unknown sampler {sampler!r}; known: {', '.join(SAMPLERS)}")
+    if "clip_skip" in settings:
+        out["clipSkip"] = int(settings["clip_skip"])
+    return out
 
 
 def generate_image(
@@ -94,6 +136,9 @@ def generate_image(
         for key, flag in _SETTING_FLAGS.items():
             if key in settings:
                 cmd += [flag, str(settings[key])]
+        overrides = config_overrides(settings)
+        if overrides:
+            cmd += ["--config-json", json.dumps(overrides)]
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)

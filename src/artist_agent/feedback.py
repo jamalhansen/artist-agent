@@ -60,6 +60,8 @@ class Feedback:
     prompt: str
     score: float
     notes: str
+    model: str | None = None  # the image checkpoint, from the item's `models.image`
+    settings: dict = field(default_factory=dict)  # what was passed to draw-things-cli
 
 
 def _human_scale(value) -> float | None:
@@ -104,6 +106,8 @@ def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
         if score is None:
             continue
         notes = match.group(1).strip() if match else ""
+        models = post.metadata.get("models") or {}
+        settings = post.metadata.get("settings") or {}
         out.append(
             Feedback(
                 stem=path.stem,
@@ -111,6 +115,8 @@ def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
                 prompt=str(post.metadata.get("prompt", "")),
                 score=float(str(score)),
                 notes="" if notes.startswith("_not yet") else notes,
+                model=str(models["image"]) if isinstance(models, dict) and models.get("image") else None,
+                settings=dict(settings) if isinstance(settings, dict) else {},
             )
         )
     return out

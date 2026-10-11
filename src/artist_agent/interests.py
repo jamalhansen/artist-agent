@@ -28,8 +28,10 @@ from dataclasses import dataclass, field, replace
 
 _HEADING_RE = re.compile(r"^##\s+(.+)$")
 _SCORE_RE = re.compile(r"^score:\s*([\d.]+)\s*\((\d+)\s*generations?\)\s*$")
-_KV_RE = re.compile(r"^(model|signal|steps|cfg|width|height|seed):\s*(\S.*)$")
-_INT_SETTING_KEYS = ("steps", "width", "height", "seed")
+_KV_RE = re.compile(r"^(model|signal|steps|cfg|width|height|seed|sampler|clip_skip):\s*(\S.*)$")
+_INT_SETTING_KEYS = ("steps", "width", "height", "seed", "clip_skip")
+_STR_SETTING_KEYS = ("sampler",)
+SETTING_KEYS = ("steps", "cfg", "width", "height", "seed", "sampler", "clip_skip")
 
 # New/never-scored interests still get picked sometimes -- a bare 0.0 score would
 # otherwise never win a weighted draw against anything with real history.
@@ -47,7 +49,9 @@ class Interest:
     signal: str | None = None
 
 
-def _coerce_setting(key: str, value: str) -> int | float:
+def _coerce_setting(key: str, value: str) -> int | float | str:
+    if key in _STR_SETTING_KEYS:
+        return value
     return int(value) if key in _INT_SETTING_KEYS else float(value)
 
 
@@ -131,7 +135,7 @@ def render_interests(interests: list[Interest], preamble: str = "") -> str:
             lines.append(f"model: {interest.model}")
         if interest.signal:
             lines.append(f"signal: {interest.signal}")
-        for key in ("steps", "cfg", "width", "height", "seed"):
+        for key in SETTING_KEYS:
             if key in interest.settings:
                 lines.append(f"{key}: {interest.settings[key]}")
         parts.append("\n".join(lines) + "\n\n" + interest.description)

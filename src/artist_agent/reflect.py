@@ -17,8 +17,9 @@ from pathlib import Path
 from local_first_common.providers.base import BaseProvider
 from pydantic import BaseModel, Field
 
+from .catalog import ImageModel, describe
 from .feedback import Feedback
-from .interests import Interest, render_interests
+from .interests import SETTING_KEYS, Interest, render_interests
 
 FEEDBACK_SOURCE = {
     "self": "your own critic's 0-1 scores and notes on each piece",
@@ -49,6 +50,15 @@ Rules:
   (an existing title) when its feedback has been consistently poor and the brief has
   already been revised before. Leave both null otherwise. There must stay between
   {min_dirs} and {max_dirs} directions.
+- Each direction renders with one image model and settings (shown with it, and on each
+  piece of feedback). You may move a direction to another model from the catalog below, or
+  change its steps, cfg, width, height, sampler or clip_skip, when the feedback suggests the
+  renderer rather than the brief is the limit: say so in `change`. Changing the model is a
+  real experiment, so do it for at most one direction per reflection, and leave model and
+  settings null to keep what the direction has. Never set a seed.
+
+Image models available:
+{catalog}
 """
 
 
@@ -56,6 +66,17 @@ class Revision(BaseModel):
     title: str
     description: str = Field(..., description="The full revised description")
     change: str = Field(..., description="One line: what changed and why, or 'unchanged'")
+    model: str | None = Field(None, description="Catalog model file to move this direction to, or null")
+    steps: int | None = None
+    cfg: float | None = None
+    width: int | None = None
+    height: int | None = None
+    sampler: str | None = None
+    clip_skip: int | None = None
+
+    def settings(self) -> dict:
+        """Only the settings the model actually set."""
+        return {k: getattr(self, k) for k in SETTING_KEYS if k != "seed" and getattr(self, k) is not None}
 
 
 class Reflection(BaseModel):
@@ -64,46 +85,85 @@ class Reflection(BaseModel):
     retire: str | None = Field(None, description="Title of one direction to drop, or null")
 
 
-def build_user(interests: list[Interest], feedback: list[Feedback]) -> str:
+def _render_settings(settings: dict) -> str:
+    shown = {k: v for k, v in settings.items() if k != "seed"}
+    return ", ".join(f"{k} {v}" for k, v in shown.items()) if shown else "model defaults"
+
+
+def build_user(interests: list[Interest], feedback: list[Feedback], default_model: str = "") -> str:
     parts = []
     for i in interests:
         rows = [f for f in feedback if f.interest == i.title]
-        lines = [f"## {i.title}", i.description.strip(), "", f"Feedback ({len(rows)} pieces):"]
-        lines += [f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}" for f in rows] or [
-            "- none"
-        ]
+        renders_with = (
+            f"Renders with: {i.model or default_model or 'the default model'} ({_render_settings(i.settings)})"
+        )
+        lines = [f"## {i.title}", i.description.strip(), "", renders_with, "", f"Feedback ({len(rows)} pieces):"]
+        lines += [
+            f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}"
+            + (f" | rendered with {f.model} ({_render_settings(f.settings)})" if f.model else "")
+            for f in rows
+        ] or ["- none"]
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
 
 def revise(
-    provider: BaseProvider, interests: list[Interest], feedback: list[Feedback], learns_from: str
-) -> list[Revision]:
-    system = SYSTEM_PROMPT.format(source=FEEDBACK_SOURCE[learns_from], min_dirs=MIN_DIRECTIONS, max_dirs=MAX_DIRECTIONS)
-    return provider.complete(system, build_user(interests, feedback), response_model=Reflection)
+    provider: BaseProvider,
+    interests: list[Interest],
+    feedback: list[Feedback],
+    learns_from: str,
+    catalog: list[ImageModel] | None = None,
+    default_model: str = "",
+) -> Reflection:
+    system = SYSTEM_PROMPT.format(
+        source=FEEDBACK_SOURCE[learns_from],
+        min_dirs=MIN_DIRECTIONS,
+        max_dirs=MAX_DIRECTIONS,
+        catalog=describe(catalog or []),
+    )
+    return provider.complete(system, build_user(interests, feedback, default_model), response_model=Reflection)
 
 
 def apply(
-    interests: list[Interest], reflection: Reflection, feedback: list[Feedback]
+    interests: list[Interest],
+    reflection: Reflection,
+    feedback: list[Feedback],
+    catalog: list[ImageModel] | None = None,
 ) -> tuple[list[Interest], list[str]]:
     """Revised interests and a changelog.
 
     Only directions that got feedback may change. One direction may be retired (if it got
     feedback and MIN_DIRECTIONS remain) and one added (if its title is new and MAX_DIRECTIONS
-    isn't exceeded); a new direction starts unscored with the tool's default model.
+    isn't exceeded); a new direction starts unscored with the tool's default model. A model
+    move must name a catalog entry and happens for at most one direction; settings changes
+    merge over the direction's own (a seed is never taken from the model).
     """
     by_title = {r.title.strip(): r for r in reflection.directions}
     with_feedback = {f.interest for f in feedback}
+    known = {m.file for m in catalog or []}
     out, log = [], []
+    model_moved = False
     for i in interests:
         r = by_title.get(i.title)
-        if r and i.title in with_feedback and r.description.strip() and r.change.strip().lower() != "unchanged":
-            out.append(
-                Interest(i.title, i.score, i.generations, r.description.strip(), i.model, dict(i.settings), i.signal)
-            )
-            log.append(f"- **{i.title}**: {r.change.strip()}")
-        else:
+        if not (r and i.title in with_feedback):
             out.append(i)
+            continue
+        model, settings, notes = i.model, dict(i.settings), []
+        if r.model and r.model != i.model and r.model in known and not model_moved:
+            model, settings, model_moved = r.model, {}, True  # new model, its catalog defaults apply at run time
+            notes.append(f"now renders with {r.model}")
+        if r.settings():
+            settings.update(r.settings())
+            notes.append("settings " + _render_settings(r.settings()))
+        description = i.description
+        if r.description.strip() and r.change.strip().lower() != "unchanged":
+            description = r.description.strip()
+            notes.insert(0, r.change.strip())
+        if description == i.description and model == i.model and settings == i.settings:
+            out.append(i)
+            continue
+        out.append(Interest(i.title, i.score, i.generations, description, model, settings, i.signal))
+        log.append(f"- **{i.title}**: " + "; ".join(notes))
     retire = (reflection.retire or "").strip()
     if retire and retire in with_feedback and any(i.title == retire for i in out) and len(out) > MIN_DIRECTIONS:
         out = [i for i in out if i.title != retire]
