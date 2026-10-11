@@ -1,6 +1,7 @@
 """Model catalog, sampler/clip-skip plumbing, and reflection moving a direction between models."""
 
 import json
+import random
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -9,8 +10,8 @@ import pytest
 
 from artist_agent import catalog, reflect
 from artist_agent.drawthings import DrawThingsError, config_overrides, generate_image
-from artist_agent.feedback import ArtistConfig, collect
-from artist_agent.interests import Interest, parse_interests, render_interests
+from artist_agent.feedback import ArtistConfig, ModelRecord, collect, track_record
+from artist_agent.interests import EXPLORATION_FLOOR, Interest, parse_interests, pick_model, render_interests
 
 
 def _catalog():
@@ -90,10 +91,16 @@ def test_build_user_shows_what_each_direction_and_piece_rendered_with():
         Interest("Cyber", 0, 0, "d"),
     ]
     fb = [reflect.Feedback("a", "Wire", "p", 0.4, "meh", model="sdxl.ckpt", settings={"seed": 9})]
-    user = reflect.build_user(interests, fb, default_model="sdxl.ckpt")
-    assert "Renders with: flux.ckpt (steps 4)" in user and "seed" not in user
-    assert "Renders with: sdxl.ckpt (model defaults)" in user
+    record = {"Wire": {"sdxl.ckpt": ModelRecord(0.31, 12, {"steps": 30}), "flux.ckpt": ModelRecord(0.62, 1)}}
+    user = reflect.build_user(interests, fb, default_model="sdxl.ckpt", record=record)
+    assert "Renders with: flux.ckpt (steps 4), pinned" in user and "seed" not in user
+    assert "Renders with: a daily draw from the catalog" in user
     assert "rendered with sdxl.ckpt (model defaults)" in user
+    assert (
+        "Track record by model (all pieces so far): flux.ckpt 0.62 over 1 piece (model defaults); sdxl.ckpt 0.31 over 12 pieces (steps 30)"
+        in user
+    )
+    assert "Track record by model: none yet" in user  # Cyber
 
 
 def test_reflection_moves_one_direction_to_a_catalog_model_and_merges_settings():
@@ -127,4 +134,33 @@ def test_system_prompt_lists_the_catalog():
     p = P()
     reflect.revise(p, [], [], "self", _catalog())  # type: ignore[arg-type]
     assert "flux.ckpt: FLUX. april look Defaults: steps 4, cfg 4.5, sampler Euler A Trailing." in p.system
-    assert "at most one direction per reflection" in p.system
+    assert "pin one direction per reflection" in p.system
+
+
+def test_track_record_is_per_direction_and_model_over_all_feedback():
+    fb = [
+        reflect.Feedback("a", "Wire", "p", 0.2, "", model="sdxl.ckpt", settings={"seed": 1, "steps": 30}),
+        reflect.Feedback("b", "Wire", "p", 0.4, "", model="sdxl.ckpt", settings={"seed": 2, "steps": 20}),
+        reflect.Feedback("c", "Wire", "p", 0.6, "", model="flux.ckpt"),
+        reflect.Feedback("d", "Cyber", "p", 0.9, "", model="sdxl.ckpt"),
+        reflect.Feedback("e", "Cyber", "p", 0.1, ""),  # no model recorded: skipped
+    ]
+    rec = track_record(fb)
+    sdxl = rec["Wire"]["sdxl.ckpt"]
+    assert (sdxl.mean, sdxl.count, sdxl.last_settings) == (pytest.approx(0.3), 2, {"steps": 20})  # seed dropped
+    assert rec["Wire"]["flux.ckpt"] == ModelRecord(0.6, 1, {})
+    assert rec["Cyber"] == {"sdxl.ckpt": ModelRecord(0.9, 1, {})}
+
+
+def test_pick_model_weighs_tried_by_score_and_untried_like_the_best():
+    rng = random.Random(7)
+    draws = [pick_model(["sdxl", "flux", "z"], {"sdxl": 0.3, "flux": 0.6}, rng) for _ in range(3000)]
+    n = {m: draws.count(m) for m in ("sdxl", "flux", "z")}
+    # weights 0.45 : 0.75 : 0.75 -> z (untried) is picked about as often as flux, more than sdxl
+    assert n["flux"] > n["sdxl"] and abs(n["z"] - n["flux"]) < 250
+    assert pick_model(["only"], {}, rng) == "only"
+    # with nothing tried every model is an even draw at the floor
+    even = [pick_model(["a", "b"], {}, rng) for _ in range(2000)]
+    assert abs(even.count("a") - 1000) < 150 and EXPLORATION_FLOOR > 0
+    with pytest.raises(ValueError):
+        pick_model([], {}, rng)

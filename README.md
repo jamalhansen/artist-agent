@@ -31,12 +31,20 @@ sampler: Euler A Trailing
 ```
 
 Keys: `model`, `steps`, `cfg`, `width`, `height`, `seed`, `sampler` (a Draw Things sampler name),
-`clip_skip`. A direction without settings takes the defaults for its model from the catalog in
-`~/.config/local-first/artist-agent.toml` (`[[image_models]]`, one entry per checkpoint in
-`DRAWTHINGS_MODELS_DIR`). A seed is chosen every run. Whatever was passed to `draw-things-cli`
-is recorded on the piece as `settings:`, beside `models:` (prompt writer, image model, critic).
+`clip_skip`. The catalog in `~/.config/local-first/artist-agent.toml` (`[[image_models]]`, one
+entry per checkpoint in `DRAWTHINGS_MODELS_DIR`) carries each model's default settings; a
+direction's own setting lines go on top of them. A seed is chosen every run. Whatever was passed
+to `draw-things-cli` is recorded on the piece as `settings:`, beside `models:` (prompt writer,
+image model, critic).
 
-On Sundays `artist-agent reflect` sees each direction's model and settings, the same for every
-piece of feedback, and the catalog; it may move one direction to another catalog model or change
-its settings when the feedback points at the renderer rather than the brief. It may also move a
-brief's core idea, add one direction, or retire one (3 to 5 directions, titles never change).
+**Daily model draw.** A direction without a `model:` line draws its image model each day from the
+catalog, weighted by that direction's mean score on each model over every piece so far (the
+artist's own feedback source: critic scores for self-taught, Jamal's stars for mentored). An
+untried model weighs as much as the best tried one, so new checkpoints get real trials. A
+`model:` line pins the direction to one model instead.
+
+On Sundays `artist-agent reflect` sees, per direction, the track record by model, what it renders
+with, the model and settings behind every new piece of feedback, and the catalog. It may pin one
+direction to a model when the record is clear, change settings when the feedback points at the
+renderer rather than the brief, move a brief's core idea, add one direction, or retire one
+(3 to 5 directions, titles never change).

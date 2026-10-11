@@ -37,8 +37,8 @@ from .core import (
     signals_dir,
 )
 from .drawthings import DrawThingsError, generate_image
-from .feedback import apply_scores, collect, load_config
-from .interests import parse_interests, pick_direction, record_outcome, render_interests
+from .feedback import apply_scores, collect, load_config, track_record
+from .interests import parse_interests, pick_direction, pick_model, record_outcome, render_interests
 from .prompt import compose_prompt
 from .reflect import apply as apply_revisions
 from .reflect import record as record_reflection
@@ -92,9 +92,10 @@ def generate(
         raise typer.Exit(1)
 
     artist = load_config(base)
+    all_feedback = collect(artist, base)
     if artist.learns_from == "jamal":
         # Scores come from Jamal's ratings, recomputed each run since ratings arrive days later.
-        interests = apply_scores(interests, collect(artist, base))
+        interests = apply_scores(interests, all_feedback)
         if not dry_run:
             i_path.write_text(render_interests(interests, preamble=preamble), encoding="utf-8")
 
@@ -118,7 +119,20 @@ def generate(
     # the 600 s kill-watchdog that artist-agent-run carried from 2026-09-13 to 2026-10-04.
     heartbeat()
     llm_provider.item_count = 1
-    model = chosen.model or DRAW_THINGS_MODEL
+    # The image model: pinned by the direction, else a daily draw from the catalog weighted by
+    # this direction's track record on each model (trial and error, with the whole history).
+    catalog = load_catalog(_TOOL_NAME)
+    if chosen.model:
+        model, how = chosen.model, "pinned"
+    elif catalog:
+        by_model = track_record(all_feedback).get(chosen.title, {})
+        model = pick_model([m.file for m in catalog], {m: r.mean for m, r in by_model.items()})
+        how = "drawn: " + ", ".join(
+            f"{m.file} {by_model[m.file].mean:.2f}" if m.file in by_model else f"{m.file} untried" for m in catalog
+        )
+    else:
+        model, how = DRAW_THINGS_MODEL, "default"
+    typer.echo(f"Model: {model} ({how})")
     image_prompt = compose_prompt(
         llm_provider,
         chosen.description,
@@ -136,7 +150,7 @@ def generate(
     # A direction may pin steps/cfg/size/seed; everything else is draw-things-cli's recommended
     # setting for the model. The seed is always chosen here so the item records it and a piece
     # can be regenerated (2026-10-11: 43 pieces had `settings: {}` and no way back to any of them).
-    settings = {**defaults_for(load_catalog(_TOOL_NAME), model), **chosen.settings}
+    settings = {**defaults_for(catalog, model), **chosen.settings}
     settings.setdefault("seed", random.randrange(2**32))
     try:
         image_bytes = generate_image(
@@ -227,14 +241,15 @@ def reflect(
     i_path = interests_path(base)
     preamble, interests = parse_interests(i_path.read_text(encoding="utf-8"))
     artist = load_config(base)
-    new = unconsumed(base, collect(artist, base))
+    all_feedback = collect(artist, base)
+    new = unconsumed(base, all_feedback)
     if len(new) < min_new:
         typer.echo(f"{artist.name}: {len(new)} new piece(s) of feedback, waiting for {min_new}.")
         return
     heartbeat()  # one long LLM call follows; see generate() for why process-doctor needs this
     llm = resolve_provider(PROVIDERS, provider, model, fallback=False, tool_name=_TOOL_NAME)
     catalog = load_catalog(_TOOL_NAME)
-    reflection = revise(llm, interests, new, artist.learns_from, catalog, DRAW_THINGS_MODEL)
+    reflection = revise(llm, interests, new, artist.learns_from, catalog, DRAW_THINGS_MODEL, track_record(all_feedback))
     revised, log = apply_revisions(interests, reflection, new, catalog)
     heartbeat()
     typer.echo(f"{artist.name} (learns from {artist.learns_from}), {len(new)} new piece(s) of feedback:")

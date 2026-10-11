@@ -18,7 +18,7 @@ from local_first_common.providers.base import BaseProvider
 from pydantic import BaseModel, Field
 
 from .catalog import ImageModel, describe
-from .feedback import Feedback
+from .feedback import Feedback, ModelRecord
 from .interests import SETTING_KEYS, Interest, render_interests
 
 FEEDBACK_SOURCE = {
@@ -50,12 +50,13 @@ Rules:
   (an existing title) when its feedback has been consistently poor and the brief has
   already been revised before. Leave both null otherwise. There must stay between
   {min_dirs} and {max_dirs} directions.
-- Each direction renders with one image model and settings (shown with it, and on each
-  piece of feedback). You may move a direction to another model from the catalog below, or
-  change its steps, cfg, width, height, sampler or clip_skip, when the feedback suggests the
-  renderer rather than the brief is the limit: say so in `change`. Changing the model is a
-  real experiment, so do it for at most one direction per reflection, and leave model and
-  settings null to keep what the direction has. Never set a seed.
+- By default each direction draws its image model daily from the catalog below, weighted by
+  its own track record (shown per direction, with the model behind each piece of feedback).
+  You may instead pin one direction per reflection to a single catalog model when the track
+  record is clear enough that the daily draw is wasting pieces, or change a direction's
+  steps, cfg, width, height, sampler or clip_skip when the feedback suggests the renderer
+  rather than the brief is the limit: say so in `change`. Leave model and settings null to
+  keep what the direction has. Never set a seed.
 
 Image models available:
 {catalog}
@@ -90,14 +91,39 @@ def _render_settings(settings: dict) -> str:
     return ", ".join(f"{k} {v}" for k, v in shown.items()) if shown else "model defaults"
 
 
-def build_user(interests: list[Interest], feedback: list[Feedback], default_model: str = "") -> str:
+def _render_record(by_model: dict[str, ModelRecord]) -> str:
+    if not by_model:
+        return "Track record by model: none yet"
+    ranked = sorted(by_model.items(), key=lambda kv: kv[1].mean, reverse=True)
+    return "Track record by model (all pieces so far): " + "; ".join(
+        f"{m} {r.mean:.2f} over {r.count} piece{'s' if r.count != 1 else ''} ({_render_settings(r.last_settings)})"
+        for m, r in ranked
+    )
+
+
+def build_user(
+    interests: list[Interest],
+    feedback: list[Feedback],
+    default_model: str = "",
+    record: dict[str, dict[str, ModelRecord]] | None = None,
+) -> str:
     parts = []
     for i in interests:
         rows = [f for f in feedback if f.interest == i.title]
         renders_with = (
-            f"Renders with: {i.model or default_model or 'the default model'} ({_render_settings(i.settings)})"
+            f"Renders with: {i.model} ({_render_settings(i.settings)}), pinned"
+            if i.model
+            else f"Renders with: a daily draw from the catalog weighted by the track record ({_render_settings(i.settings)})"
         )
-        lines = [f"## {i.title}", i.description.strip(), "", renders_with, "", f"Feedback ({len(rows)} pieces):"]
+        lines = [
+            f"## {i.title}",
+            i.description.strip(),
+            "",
+            renders_with,
+            _render_record((record or {}).get(i.title, {})),
+            "",
+            f"Feedback ({len(rows)} pieces since the last reflection):",
+        ]
         lines += [
             f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}"
             + (f" | rendered with {f.model} ({_render_settings(f.settings)})" if f.model else "")
@@ -114,6 +140,7 @@ def revise(
     learns_from: str,
     catalog: list[ImageModel] | None = None,
     default_model: str = "",
+    record: dict[str, dict[str, ModelRecord]] | None = None,
 ) -> Reflection:
     system = SYSTEM_PROMPT.format(
         source=FEEDBACK_SOURCE[learns_from],
@@ -121,7 +148,8 @@ def revise(
         max_dirs=MAX_DIRECTIONS,
         catalog=describe(catalog or []),
     )
-    return provider.complete(system, build_user(interests, feedback, default_model), response_model=Reflection)
+    user = build_user(interests, feedback, default_model, record)
+    return provider.complete(system, user, response_model=Reflection)
 
 
 def apply(

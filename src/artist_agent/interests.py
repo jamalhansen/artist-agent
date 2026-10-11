@@ -142,6 +142,27 @@ def render_interests(interests: list[Interest], preamble: str = "") -> str:
     return "\n\n".join(parts).strip() + "\n"
 
 
+def pick_model(
+    candidates: list[str],
+    record: dict[str, float],
+    rng: random.Random | None = None,
+) -> str:
+    """Weighted-random draw of an image model for today's piece of one direction.
+
+    `record` maps model file -> that direction's mean score on it so far. Tried models weigh
+    their mean plus EXPLORATION_FLOOR, like pick_direction. An untried model is optimistic:
+    it weighs as much as the best tried one plus the floor, so a new checkpoint gets real
+    trials quickly instead of waiting on a 0.15 floor against a model with a year of history.
+    One model is one direction's whole menu; nothing is ever locked out.
+    """
+    if not candidates:
+        raise ValueError("no image models to pick from")
+    rng = rng or random.Random()
+    best = max((record.get(m, 0.0) for m in candidates if m in record), default=0.0)
+    weights = [record.get(m, best) + EXPLORATION_FLOOR for m in candidates]
+    return rng.choices(candidates, weights=weights, k=1)[0]
+
+
 def pick_direction(interests: list[Interest], rng: random.Random | None = None) -> Interest:
     """Weighted-random pick, biased toward higher-scoring directions.
 

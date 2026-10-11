@@ -122,6 +122,38 @@ def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
     return out
 
 
+@dataclass
+class ModelRecord:
+    """How one direction has done on one image model, over every piece of feedback."""
+
+    mean: float
+    count: int
+    last_settings: dict = field(default_factory=dict)
+
+
+def track_record(feedback: list[Feedback]) -> dict[str, dict[str, ModelRecord]]:
+    """{direction title: {model file: record}}; pieces with no recorded model are skipped.
+
+    This is what the daily model draw and the Sunday reflection both read: the whole
+    history, not just the last week, so "what does well for what" survives reflection
+    consuming its feedback.
+    """
+    sums: dict[str, dict[str, list[float]]] = {}
+    last: dict[str, dict[str, dict]] = {}
+    for f in feedback:  # oldest first, so the last write wins for last_settings
+        if not f.model:
+            continue
+        sums.setdefault(f.interest, {}).setdefault(f.model, []).append(f.score)
+        last.setdefault(f.interest, {})[f.model] = {k: v for k, v in f.settings.items() if k != "seed"}
+    return {
+        title: {
+            model: ModelRecord(sum(scores) / len(scores), len(scores), last[title][model])
+            for model, scores in by_model.items()
+        }
+        for title, by_model in sums.items()
+    }
+
+
 def apply_scores(interests: list[Interest], feedback: list[Feedback]) -> list[Interest]:
     """Each direction's score becomes the mean of its feedback; no feedback means unscored."""
     by_title: dict[str, list[float]] = {}
