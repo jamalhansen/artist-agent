@@ -73,9 +73,9 @@ class Item:
     generated_at: datetime
     prompt: str
     interest_title: str
-    settings: dict
+    settings: dict  # what was passed to draw-things-cli, seed included, so a piece can be re-run
     image_filename: str
-    self_score: float
+    self_score: float | None  # None when the critic failed
     self_score_notes: str
     models: dict
     human_score: float | None = None
@@ -134,7 +134,8 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
     """
     body = (
         f"![{item.interest_title}]({relative_image_path})\n\n"
-        f"**Self-critique ({item.self_score:.2f}):** {item.self_score_notes}\n\n"
+        f"**Self-critique ({'failed' if item.self_score is None else f'{item.self_score:.2f}'}):** "
+        f"{item.self_score_notes}\n\n"
         "**Human notes:** " + (item.human_notes or "_not yet reviewed_") + "\n"
     )
     post = frontmatter.Post(

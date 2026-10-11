@@ -3,6 +3,7 @@
 generate via Draw Things, self-critique, write a portable item note, fold the
 outcome back into the interests file."""
 
+import random
 from datetime import datetime
 from typing import Annotated
 
@@ -116,10 +117,12 @@ def generate(
     # the 600 s kill-watchdog that artist-agent-run carried from 2026-09-13 to 2026-10-04.
     heartbeat()
     llm_provider.item_count = 1
+    model = chosen.model or DRAW_THINGS_MODEL
     image_prompt = compose_prompt(
         llm_provider,
         chosen.description,
         current_event=current_event.title if current_event else None,
+        image_model=model,
     )
     heartbeat()
     if verbose:
@@ -129,8 +132,11 @@ def generate(
         typer.echo("\nDry run -- stopping before generation.")
         raise typer.Exit(0)
 
-    model = chosen.model or DRAW_THINGS_MODEL
+    # A direction may pin steps/cfg/size/seed; everything else is draw-things-cli's recommended
+    # setting for the model. The seed is always chosen here so the item records it and a piece
+    # can be regenerated (2026-10-11: 43 pieces had `settings: {}` and no way back to any of them).
     settings = dict(chosen.settings)
+    settings.setdefault("seed", random.randrange(2**32))
     try:
         image_bytes = generate_image(
             image_prompt,
@@ -153,7 +159,7 @@ def generate(
         critique = self_score(vision_llm, chosen.description, image_prompt, image_bytes)
     except Exception as e:  # noqa: BLE001 - self-scoring failure shouldn't discard a real generation
         typer.echo(f"Warning: self-scoring failed, recording without a score: {e}", err=True)
-        critique = SelfScore(score=0.0, notes=f"self-scoring failed: {e}")
+        critique = SelfScore(score=None, notes=f"self-scoring failed: {e}")
     heartbeat()
     if verbose:
         typer.echo(f"Self-critique ({critique.score:.2f}): {critique.notes}")
@@ -194,13 +200,13 @@ def generate(
         sig_path = sig_dir / f"{signal_stem(current_event.title, now)}.md"
         sig_path.write_text(render_signal_note(current_event.title, current_event.source_url, now), encoding="utf-8")
 
-    if artist.learns_from == "self":
+    if artist.learns_from == "self" and critique.score is not None:
         updated_interests = record_outcome(interests, chosen.title, critique.score)
         i_path.write_text(render_interests(updated_interests, preamble=preamble), encoding="utf-8")
 
     typer.echo(f"Image:  {img_dir / item.image_filename}")
     typer.echo(f"Item:   {note_path}")
-    typer.echo(f"\nDone. self_score={critique.score:.2f}")
+    typer.echo(f"\nDone. self_score={'none (critic failed)' if critique.score is None else f'{critique.score:.2f}'}")
 
 
 @app.command()

@@ -105,6 +105,12 @@ class TestRenderItemNote:
         assert post["human_score"] is None
         assert post["status"] == "new"
 
+    def test_failed_critique_records_null_not_zero(self):
+        item = self._make_item(self_score=None, self_score_notes="self-scoring failed: boom", settings={"seed": 7})
+        post = frontmatter.loads(render_item_note(item, "../images/foo.png"))
+        assert post["self_score"] is None and post["settings"] == {"seed": 7}
+        assert "**Self-critique (failed):** self-scoring failed: boom" in post.content
+
     def test_body_uses_plain_markdown_image_syntax(self):
         content = render_item_note(self._make_item(), "../images/foo.png")
         post = frontmatter.loads(content)

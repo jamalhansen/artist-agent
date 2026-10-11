@@ -35,7 +35,10 @@ class SelfScoreModel(BaseModel):
 
 @dataclass
 class SelfScore:
-    score: float
+    """`score` is None when the critic call failed: the piece is kept but stays out of every
+    average (a 0.0 used to stand in, and dragged its direction's score down for nothing)."""
+
+    score: float | None
     notes: str
 
 

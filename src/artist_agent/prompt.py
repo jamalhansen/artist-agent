@@ -2,8 +2,10 @@
 
 from local_first_common.providers.base import BaseProvider
 
+DEFAULT_IMAGE_MODEL_NAME = "Stable Diffusion XL"
+
 SYSTEM_PROMPT = """\
-You write image-generation prompts for a Stable Diffusion XL model, for a personal daily
+You write image-generation prompts for the image model "{image_model}", for a personal daily
 art project.
 
 You will be given one creative direction the artist is currently exploring -- a
@@ -31,7 +33,18 @@ from sound to shape, applied to a real event instead.
 """
 
 
-def compose_prompt(provider: BaseProvider, interest_description: str, current_event: str | None = None) -> str:
+def system_prompt(image_model: str | None = None) -> str:
+    """The writer's instructions, naming the image model so prompt style can follow the model
+    (SDXL wants tag-like detail; newer DiT models read plain sentences)."""
+    return SYSTEM_PROMPT.format(image_model=image_model or DEFAULT_IMAGE_MODEL_NAME)
+
+
+def compose_prompt(
+    provider: BaseProvider,
+    interest_description: str,
+    current_event: str | None = None,
+    image_model: str | None = None,
+) -> str:
     """Send an interest's description to the provider and return a ready-to-use prompt.
 
     current_event, when given, is a real topic (a headline/title, not a full
@@ -41,4 +54,4 @@ def compose_prompt(provider: BaseProvider, interest_description: str, current_ev
     user_message = interest_description
     if current_event:
         user_message += f"\n\nToday's real-world signal to draw mood from (do not depict literally): {current_event}"
-    return provider.complete(SYSTEM_PROMPT, user_message).strip()
+    return provider.complete(system_prompt(image_model), user_message).strip()

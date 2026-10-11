@@ -1,6 +1,6 @@
 from local_first_common.testing import MockProvider
 
-from artist_agent.prompt import SYSTEM_PROMPT, compose_prompt
+from artist_agent.prompt import compose_prompt, system_prompt
 
 
 class TestComposePrompt:
@@ -13,7 +13,7 @@ class TestComposePrompt:
         provider = MockProvider(response="a prompt")
         compose_prompt(provider, "the interest description")
         system, user = provider.calls[0]
-        assert system == SYSTEM_PROMPT
+        assert system == system_prompt()
         assert user == "the interest description"
 
     def test_no_current_event_leaves_user_message_unchanged(self):
@@ -30,4 +30,11 @@ class TestComposePrompt:
         assert "Some real headline" in user
 
     def test_system_prompt_instructs_not_to_depict_current_event_literally(self):
-        assert "not depict" in SYSTEM_PROMPT.lower() or "literal" in SYSTEM_PROMPT.lower()
+        assert "not depict" in system_prompt().lower() or "literal" in system_prompt().lower()
+
+    def test_writer_is_told_which_image_model(self):
+        provider = MockProvider(response="a prompt")
+        compose_prompt(provider, "d", image_model="z_image_turbo_1.0_q6p.ckpt")
+        system, _ = provider.calls[0]
+        assert "z_image_turbo_1.0_q6p.ckpt" in system and "Stable Diffusion XL" not in system
+        assert "Stable Diffusion XL" in system_prompt()

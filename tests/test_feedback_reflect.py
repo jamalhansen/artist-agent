@@ -131,3 +131,49 @@ def test_record_archives_logs_and_consumes(tmp_path):
     assert snap.name == "interests-2026-10-04-0900.md" and "old" in snap.read_text()
     assert "## 2026-10-04 (1 pieces of feedback)" in (tmp_path / "_state" / "history" / "changelog.md").read_text()
     assert reflect.unconsumed(tmp_path, fb) == []
+
+
+def test_reflection_can_retire_one_and_add_one_within_bounds():
+    interests = [Interest(t, 0.3, 2, f"old {t}") for t in ("A", "B", "C", "D")]
+    fb = [reflect.Feedback("x", "D", "p", 0.0, "dull"), reflect.Feedback("y", "A", "p", 0.5, "")]
+    reflection = reflect.Reflection(
+        directions=[reflect.Revision(title=t, description=f"old {t}", change="unchanged") for t in "ABCD"],
+        new_direction=reflect.Revision(title="E", description="fresh", change="feedback asked for figures"),
+        retire="D",
+    )
+    out, log = reflect.apply(interests, reflection, fb)
+    assert [i.title for i in out] == ["A", "B", "C", "E"]
+    assert out[-1].score == 0 and out[-1].generations == 0 and out[-1].model is None
+    assert log == ["- **D**: retired", "- **E**: new direction (feedback asked for figures)"]
+
+
+def test_retire_needs_feedback_and_a_floor_and_add_has_a_ceiling():
+    three = [Interest(t, 0.3, 2, "d") for t in ("A", "B", "C")]
+    fb = [reflect.Feedback("x", "A", "p", 0.0, "")]
+    unchanged = [reflect.Revision(title=t, description="d", change="unchanged") for t in "ABC"]
+    # C never got feedback, and dropping any of three would go under the floor
+    out, log = reflect.apply(three, reflect.Reflection(directions=unchanged, retire="C"), fb)
+    assert [i.title for i in out] == ["A", "B", "C"] and log == []
+    out, _ = reflect.apply(three, reflect.Reflection(directions=unchanged, retire="A"), fb)
+    assert len(out) == 3
+    five = [Interest(t, 0.3, 2, "d") for t in "ABCDE"]
+    out, log = reflect.apply(
+        five,
+        reflect.Reflection(directions=[], new_direction=reflect.Revision(title="F", description="d", change="")),
+        fb,
+    )
+    assert len(out) == 5 and log == []
+    # a duplicate title is ignored too
+    out, _ = reflect.apply(
+        three,
+        reflect.Reflection(directions=[], new_direction=reflect.Revision(title="A", description="d", change="")),
+        fb,
+    )
+    assert len(out) == 3
+
+
+def test_system_prompt_allows_core_idea_moves_and_states_bounds():
+    llm = FakeProvider(reflect.Reflection(directions=[]))
+    reflect.revise(llm, [], [], "self")
+    system, _ = llm.calls[0]
+    assert "move the core idea" in system and "3 and 5 directions" in system
