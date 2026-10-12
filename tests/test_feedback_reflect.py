@@ -71,6 +71,27 @@ def test_jamal_artist_sees_ratings_of_both_artists_since_start(two_artists):
     ]
 
 
+def test_recent_work_includes_unrated_pieces_and_intentions(two_artists):
+    from artist_agent.feedback import recent_work
+
+    a, b = two_artists
+    d = b / "items"
+    (d / "b3.md").write_text(
+        "---\ngenerated_at: '2026-10-03T09:00:00-05:00'\ninterest: Wire\nprompt: p\nself_score: 0.5\n"
+        "human_score: null\nintention:\n  theme: Wire\n  mode: study\nlesson: L\n---\n"
+        "**Self-critique (0.50):** c\n\n**Human notes:** _not yet reviewed_\n",
+        encoding="utf-8",
+    )
+    mentored = ArtistConfig("mentored", "jamal", [a, b], date(2026, 10, 1))
+    work = recent_work(mentored, b)
+    assert [f.stem for f in work] == ["a1", "b1", "b2", "b3"]
+    assert (
+        work[-1].score is None and work[-1].intention == {"theme": "Wire", "mode": "study"} and work[-1].lesson == "L"
+    )
+    assert [f.stem for f in recent_work(mentored, b, 2)] == ["b2", "b3"]
+    assert [f.stem for f in collect(mentored, b)] == ["a1", "b1"]
+
+
 def test_apply_scores_means_and_resets_unscored():
     interests = [Interest("Cyber", 0.9, 15, "d"), Interest("Wire", 0.3, 4, "d")]
     fb = [reflect.Feedback("x", "Cyber", "p", 0.25, ""), reflect.Feedback("y", "Cyber", "p", 0.75, "")]
@@ -119,6 +140,20 @@ def test_reflection_only_revises_directions_with_feedback(tmp_path):
     assert log == ["- **Cyber**: ask for the future"]
     system, user = llm.calls[0]
     assert "human viewer" in system and "not cyberpunk" in user and "- none" in user
+
+
+def test_practice_revision_prompt_and_record_archive(tmp_path):
+    from artist_agent.practice import SECTIONS
+
+    llm = FakeProvider(reflect.PracticeRevision(practice="# P\n" + "".join(f"## {s}\n" for s in SECTIONS), change="c"))
+    fb = [reflect.Feedback("a1", "Cyber", "p", 0.25, "flat", lesson="L", intention={"mode": "study", "palette": "red"})]
+    rev = reflect.revise_practice(llm, "# old practice", [Interest("Cyber", 0.2, 1, "d")], fb, "self")
+    system, user = llm.calls[0]
+    assert "Stretching toward" in system and "own critic" in system
+    assert "# old practice" in user and "mode: study; palette: red; lesson: L" in user
+    assert rev.change == "c"
+    snap = reflect.record(tmp_path, "", [], [], [], fb, datetime(2026, 10, 4, 9, 0).astimezone(), "# old practice")
+    assert (snap.parent / "practice-2026-10-04-0900.md").read_text() == "# old practice"
 
 
 def test_record_archives_logs_and_consumes(tmp_path):

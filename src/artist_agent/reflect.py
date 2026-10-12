@@ -101,6 +101,16 @@ def _render_record(by_model: dict[str, ModelRecord]) -> str:
     )
 
 
+def _intention_line(f: Feedback) -> str:
+    it = f.intention or {}
+    if not it:
+        return ""
+    bits = [f"{k}: {it[k]}" for k in ("mode", "palette", "feel", "hypothesis") if it.get(k)]
+    if f.lesson:
+        bits.append(f"lesson: {f.lesson}")
+    return (" | " + "; ".join(bits)) if bits else ""
+
+
 def build_user(
     interests: list[Interest],
     feedback: list[Feedback],
@@ -127,6 +137,7 @@ def build_user(
         lines += [
             f"- score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}"
             + (f" | rendered with {f.model} ({_render_settings(f.settings)})" if f.model else "")
+            + _intention_line(f)
             for f in rows
         ] or ["- none"]
         parts.append("\n".join(lines))
@@ -205,6 +216,52 @@ def apply(
     return out, log
 
 
+PRACTICE_PROMPT = """\
+You are an artist with a daily generative-art practice, writing up what the week's work
+taught you. Your feedback comes from {source}. You get your current practice file, your
+themes, and the week's pieces with their intentions (idea, palette, feel, medium, technique,
+mode, hypothesis) and their feedback.
+
+Rewrite the practice file so that it is true now. Keep all six sections, with exactly these
+headings: {sections}. Under each:
+- Style: what keeps coming back in the work you and your feedback liked, in a few sentences;
+  say "not found yet" when it is honestly too early.
+- Palettes I like: named color combinations that were rated well, and what each did; drop
+  ones that stopped working.
+- Media and technique: per medium, what it does in your hands and which settings fit which
+  kind of image, from the record and the lessons; keep it to what the pieces showed.
+- Themes: the directions in your own words, and any one-off idea that worked and deserves
+  to come back.
+- Stretching toward: one or two unfamiliar techniques, media or palettes to make studies
+  with next week, chosen because the record has a gap there, not because they sound nice.
+- Lessons: the ten most useful lessons from all your work, newest first, one line each.
+
+Be concrete and short; this file is read before every piece. Keep anything the viewer wrote
+in it by hand that still applies. `change` is two or three lines on what you changed.
+"""
+
+
+class PracticeRevision(BaseModel):
+    practice: str = Field(..., description="The full rewritten practice file, markdown")
+    change: str = Field(..., description="Two or three lines on what changed and why")
+
+
+def revise_practice(
+    provider: BaseProvider,
+    practice: str,
+    interests: list[Interest],
+    feedback: list[Feedback],
+    learns_from: str,
+    record: dict[str, dict[str, ModelRecord]] | None = None,
+) -> PracticeRevision:
+    from .practice import SECTIONS
+
+    system = PRACTICE_PROMPT.format(source=FEEDBACK_SOURCE[learns_from], sections=", ".join(SECTIONS))
+    user = "# Current practice file\n\n" + practice.strip() + "\n\n# Themes and the week's pieces\n\n"
+    user += build_user(interests, feedback, record=record)
+    return provider.complete(system, user, response_model=PracticeRevision)
+
+
 def consumed_path(base: Path) -> Path:
     return base / "_state" / "reflected.txt"
 
@@ -223,13 +280,16 @@ def record(
     log: list[str],
     used: list[Feedback],
     now: datetime,
+    practice_before: str | None = None,
 ) -> Path:
-    """Archive the pre-revision file, append the changelog, mark the feedback consumed."""
+    """Archive the pre-revision files, append the changelog, mark the feedback consumed."""
     history = base / "_state" / "history"
     history.mkdir(parents=True, exist_ok=True)
     stamp = now.strftime("%Y-%m-%d-%H%M")
     snapshot = history / f"interests-{stamp}.md"
     snapshot.write_text(render_interests(before, preamble=preamble), encoding="utf-8")
+    if practice_before is not None:
+        (history / f"practice-{stamp}.md").write_text(practice_before, encoding="utf-8")
     with (history / "changelog.md").open("a", encoding="utf-8") as f:
         f.write(
             f"\n## {now.date().isoformat()} ({len(used)} pieces of feedback)\n"

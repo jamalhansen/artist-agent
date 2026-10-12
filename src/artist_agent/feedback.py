@@ -58,10 +58,13 @@ class Feedback:
     stem: str
     interest: str
     prompt: str
-    score: float
+    score: float | None  # None only in recent_work(): the piece is not yet rated
     notes: str
     model: str | None = None  # the image checkpoint, from the item's `models.image`
     settings: dict = field(default_factory=dict)  # what was passed to draw-things-cli
+    intention: dict = field(default_factory=dict)  # the studio session's decisions, when the piece has them
+    lesson: str = ""  # the critic's lesson line
+    day: date | None = None
 
 
 def _human_scale(value) -> float | None:
@@ -89,37 +92,53 @@ def _items(dirs: list[Path]):
                 continue
 
 
+def _read(path: Path, post, learns_from: str) -> "Feedback":
+    meta = post.metadata
+    if learns_from == "self":
+        score = meta.get("self_score")
+        match = _SELF_NOTES_RE.search(post.content)
+    else:
+        score = _human_scale(meta.get("human_score"))
+        match = _HUMAN_NOTES_RE.search(post.content)
+    notes = match.group(1).strip() if match else ""
+    models = meta.get("models") or {}
+    settings = meta.get("settings") or {}
+    intention = meta.get("intention") or {}
+    return Feedback(
+        stem=path.stem,
+        interest=str(meta.get("interest", "")),
+        prompt=str(meta.get("prompt", "")),
+        score=float(str(score)) if score is not None else None,
+        notes="" if notes.startswith("_not yet") else notes,
+        model=str(models["image"]) if isinstance(models, dict) and models.get("image") else None,
+        settings=dict(settings) if isinstance(settings, dict) else {},
+        intention=dict(intention) if isinstance(intention, dict) else {},
+        lesson=str(meta.get("lesson") or ""),
+        day=_generated_on(meta),
+    )
+
+
 def collect(config: ArtistConfig, base: Path) -> list[Feedback]:
-    """The feedback this artist learns from, oldest first."""
+    """The feedback this artist learns from, oldest first: only pieces that have a score."""
+    return [f for f in recent_work(config, base) if f.score is not None]
+
+
+def recent_work(config: ArtistConfig, base: Path, limit: int | None = None) -> list[Feedback]:
+    """What the artist has made and seen lately, rated or not, oldest first.
+
+    The studio session reads this: an unrated piece still tells the artist what it tried
+    yesterday, so it doesn't repeat itself while waiting for a rating. The score and notes
+    come from the artist's own feedback source, so the mentored artist never sees a critique.
+    """
     out = []
     dirs = [base] if config.learns_from == "self" else config.feedback_dirs
     for path, post in _items(dirs):
         day = _generated_on(post.metadata)
         if config.since and (day is None or day < config.since):
             continue
-        if config.learns_from == "self":
-            score = post.metadata.get("self_score")
-            match = _SELF_NOTES_RE.search(post.content)
-        else:
-            score = _human_scale(post.metadata.get("human_score"))
-            match = _HUMAN_NOTES_RE.search(post.content)
-        if score is None:
-            continue
-        notes = match.group(1).strip() if match else ""
-        models = post.metadata.get("models") or {}
-        settings = post.metadata.get("settings") or {}
-        out.append(
-            Feedback(
-                stem=path.stem,
-                interest=str(post.metadata.get("interest", "")),
-                prompt=str(post.metadata.get("prompt", "")),
-                score=float(str(score)),
-                notes="" if notes.startswith("_not yet") else notes,
-                model=str(models["image"]) if isinstance(models, dict) and models.get("image") else None,
-                settings=dict(settings) if isinstance(settings, dict) else {},
-            )
-        )
-    return out
+        out.append(_read(path, post, config.learns_from))
+    out.sort(key=lambda f: (f.day or date.min, f.stem))
+    return out[-limit:] if limit else out
 
 
 @dataclass

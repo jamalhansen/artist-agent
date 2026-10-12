@@ -8,7 +8,7 @@ or neither, without a migration later.
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -78,6 +78,8 @@ class Item:
     self_score: float | None  # None when the critic failed
     self_score_notes: str
     models: dict
+    intention: dict = field(default_factory=dict)  # the studio session's decisions, see studio.Intention.record
+    lesson: str = ""  # what the critic says the piece taught
     human_score: float | None = None
     human_notes: str | None = None
     status: str = "new"
@@ -136,13 +138,18 @@ def render_item_note(item: Item, relative_image_path: str) -> str:
         f"![{item.interest_title}]({relative_image_path})\n\n"
         f"**Self-critique ({'failed' if item.self_score is None else f'{item.self_score:.2f}'}):** "
         f"{item.self_score_notes}\n\n"
-        "**Human notes:** " + (item.human_notes or "_not yet reviewed_") + "\n"
+        + (f"**Lesson:** {item.lesson}\n\n" if item.lesson else "")
+        + "**Human notes:** "
+        + (item.human_notes or "_not yet reviewed_")
+        + "\n"
     )
     post = frontmatter.Post(
         body,
         title=derive_title(item.prompt),
         generated_at=item.generated_at.isoformat(),
         interest=item.interest_title,
+        intention=item.intention or None,
+        lesson=item.lesson or None,
         prompt=item.prompt,
         settings=item.settings,
         models=item.models,

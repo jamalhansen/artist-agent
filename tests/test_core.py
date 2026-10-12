@@ -150,6 +150,41 @@ class TestSignalsDir:
         assert signals_dir(tmp_path) == tmp_path / "signals"
 
 
+class TestItemIntention:
+    def test_intention_and_lesson_are_recorded(self):
+        item = Item(
+            generated_at=datetime(2026, 10, 12, 6, 0, tzinfo=UTC),
+            prompt="a ring",
+            interest_title="Wire",
+            settings={"steps": 4, "seed": 1},
+            image_filename="x.png",
+            self_score=0.6,
+            self_score_notes="fine",
+            models={"prompt": "a", "image": "b", "critique": "c"},
+            intention={"theme": "Wire", "mode": "study", "palette": "cyan"},
+            lesson="FLUX holds black",
+        )
+        post = frontmatter.loads(render_item_note(item, "../images/x.png"))
+        assert post["intention"] == {"theme": "Wire", "mode": "study", "palette": "cyan"}
+        assert post["lesson"] == "FLUX holds black"
+        assert "**Lesson:** FLUX holds black" in post.content
+
+    def test_no_intention_renders_as_before(self):
+        item = Item(
+            generated_at=datetime(2026, 10, 12, 6, 0, tzinfo=UTC),
+            prompt="a ring",
+            interest_title="Wire",
+            settings={},
+            image_filename="x.png",
+            self_score=None,
+            self_score_notes="failed",
+            models={},
+        )
+        text = render_item_note(item, "../images/x.png")
+        post = frontmatter.loads(text)
+        assert post["intention"] is None and post["lesson"] is None and "**Lesson:**" not in text
+
+
 class TestSignalStem:
     def test_combines_date_and_slug(self):
         assert signal_stem("Some Real Headline", datetime(2026, 9, 18, tzinfo=UTC)) == "2026-09-18-some-real-headline"

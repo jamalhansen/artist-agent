@@ -29,7 +29,26 @@ class TestSelfScore:
     def test_includes_direction_and_prompt_in_user_message(self):
         response = json.dumps({"score": 0.5, "notes": "ok"})
         provider = MockProvider(response=response)
-        self_score(provider, "a creative direction", "a generated prompt", b"x")
+        result = self_score(provider, "a creative direction", "a generated prompt", b"x")
         _, user = provider.calls[0]
         assert "a creative direction" in user
         assert "a generated prompt" in user
+        assert "Intention:" not in user and result.lesson == ""
+
+    def test_intention_and_technique_reach_the_critic_and_the_lesson_comes_back(self):
+        response = json.dumps({"score": 0.5, "notes": "ok", "lesson": "FLUX holds black"})
+        provider = MockProvider(response=response)
+        intention = {
+            "theme": "Wire",
+            "idea": "a ring",
+            "mode": "study",
+            "hypothesis": "h",
+            "why": "secret",
+            "follows": None,
+        }
+        result = self_score(provider, "d", "p", b"x", intention, {"steps": 4, "seed": 9})
+        _, user = provider.calls[0]
+        assert "Intention:\ntheme: Wire\nidea: a ring\nmode: study\nhypothesis: h\ntechnique: steps 4\n" in user
+        assert "secret" not in user and "seed" not in user
+        assert result.lesson == "FLUX holds black"
+        assert "lesson" in provider.calls[0][0]
