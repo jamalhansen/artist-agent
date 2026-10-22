@@ -4,6 +4,8 @@ palette, medium, technique and prompt; Draw Things renders it; the critic scores
 the intention and names the lesson; the piece is written as a portable item note and the
 outcome folded back into the artist's themes."""
 
+import random
+from dataclasses import replace
 from datetime import datetime
 from typing import Annotated
 
@@ -15,6 +17,7 @@ from local_first_common.cli import (
     resolve_provider,
 )
 from local_first_common.config import get_setting
+from local_first_common.config import load_config as load_tool_config
 from local_first_common.heartbeat import heartbeat
 from local_first_common.providers import PROVIDERS
 from local_first_common.tracking import register_tool
@@ -46,6 +49,7 @@ from .reflect import revise, revise_practice, unconsumed
 from .scoring import SelfScore, self_score
 from .signals import fetch_current_event
 from .studio import RECENT_PIECES, plan, resolve
+from .variety import draw, resting_theme, wild_card_today
 
 _TOOL_NAME = "artist-agent"
 _TOOL = register_tool(_TOOL_NAME)
@@ -105,6 +109,13 @@ def generate(
     recent = recent_work(artist, base, RECENT_PIECES)
     practice = load_practice(base)
     catalog = load_catalog(_TOOL_NAME)
+    # Variety is judged on the artist's own pieces (the mentored artist's feedback also holds the
+    # other artist's) and its own feedback source, so both artists get the same rule.
+    own = recent_work(replace(artist, feedback_dirs=[base]), base, RECENT_PIECES)
+    rng = random.Random()
+    draw_lists = load_tool_config(_TOOL_NAME).get("wild_card")
+    wild = wild_card_today(own, catalog, rng, draw_lists)
+    resting = None if wild else resting_theme(own)
 
     # Best effort, never a reason to fail the day: the studio may use it or not.
     current_event = fetch_current_event()
@@ -133,8 +144,32 @@ def generate(
         catalog,
         current_event=current_event.title if current_event else None,
         today=now.strftime("%A %Y-%m-%d"),
+        resting=resting,
+        wild_card=wild,
     )
-    choice = resolve(intention, interests, catalog, record, DRAW_THINGS_MODEL)
+    if resting and intention.theme.strip().lower() == resting.strip().lower():
+        # Told the theme was resting and chose it anyway: the rut is stronger than the
+        # instruction, so the day becomes a wild card.
+        wild = draw(own, catalog, rng, "streak", draw_lists)
+        intention = plan(
+            llm_provider,
+            practice,
+            interests,
+            record,
+            recent,
+            artist.learns_from,
+            catalog,
+            today=now.strftime("%A %Y-%m-%d"),
+            wild_card=wild,
+        )
+    if wild:
+        # A one-off scored under a theme's title would count toward that theme's record.
+        if any(i.title.strip().lower() == intention.theme.strip().lower() for i in interests):
+            intention.theme = f"Wild card: {wild.subject}"
+        typer.echo(f"Wild card ({wild.reason}): {wild.subject} / {wild.material} / {wild.movement}")
+    elif resting:
+        typer.echo(f"Resting:  {resting}")
+    choice = resolve(intention, interests, catalog, record, DRAW_THINGS_MODEL, rng, wild_card=wild)
     heartbeat()
     # The theme on record is the matching direction's exact title, so scores stay attributable;
     # a one-off idea keeps the title the artist gave it.
@@ -202,7 +237,7 @@ def generate(
         self_score=critique.score,
         self_score_notes=critique.notes,
         models=models_used,
-        intention=intention.record(),
+        intention=intention.record() | ({"wild_card": wild.record()} if wild else {}),
         lesson=critique.lesson,
         current_event_title=current_event.title if uses_signal else None,
         current_event_source_url=current_event.source_url if uses_signal else None,

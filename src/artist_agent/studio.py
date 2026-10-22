@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from .catalog import ImageModel, describe, find, technique_for
 from .feedback import Feedback, ModelRecord
 from .interests import Interest, pick_model
+from .variety import STREAK_LIMIT, WildCard
 
 MODES = ("study", "piece")
 RECENT_PIECES = 14
@@ -55,7 +56,7 @@ answer.
 Your feedback comes from {source}. Learn from it: do more of what was rated well, change
 what was not, and read the lessons. Do not repeat yesterday's theme and medium unless you
 are deliberately returning to a piece. About one piece in three should be a study that tries
-something from "Stretching toward". Keep any "avoid" rules the themes carry.
+something from "Stretching toward". Read each theme for what it reaches for.
 
 Media available:
 {catalog}
@@ -142,6 +143,36 @@ def _piece_text(f: Feedback, learns_from: str) -> str:
     return head
 
 
+def build_wild_card_user(wild: WildCard, interests: list[Interest], today: str = "") -> str:
+    """A wild-card day: no themes, no recent work, no practice file, only the draw.
+
+    Each of those pulls the planner back to what it made yesterday, which is the rut the
+    wild card exists to break.
+    """
+    medium = f"\nMedium (drawn, use it): {wild.medium}" if wild.medium else ""
+    taken = ", ".join(f'"{i.title}"' for i in interests)
+    return "\n\n".join(
+        p
+        for p in (
+            f"Today: {today}" if today else "",
+            "# Wild card",
+            (
+                "Today is not a day for your themes. It is a one-off, made from a random draw, to get "
+                "you somewhere you would never have chosen. Combine the three into one image that is "
+                "interesting and has feeling: take them seriously, interpret them freely, and let the "
+                "strangeness of the combination be the point. Choose the palette, feel, technique and "
+                "size to serve that image."
+            ),
+            f"Subject: {wild.subject}\nMaterial or look: {wild.material}\nArt movement or artist: {wild.movement}{medium}",
+            (
+                f'Give it a short new theme title of your own (not {taken}). Mode is "piece" or '
+                '"study" as you see fit; follows is null.'
+            ),
+        )
+        if p
+    )
+
+
 def build_user(
     practice: str,
     interests: list[Interest],
@@ -150,9 +181,17 @@ def build_user(
     learns_from: str,
     current_event: str | None = None,
     today: str = "",
+    resting: str | None = None,
 ) -> str:
     parts = [f"Today: {today}" if today else "", "# Your practice file", practice.strip(), "# Your themes"]
+    if resting:
+        parts.append(
+            f'"{resting}" is resting today: you made it {STREAK_LIMIT} or more days running. Choose another '
+            "theme, or a one-off idea of your own."
+        )
     for i in interests:
+        if i.title == resting:
+            continue
         pin = f" Pinned to {i.model}." if i.model else ""
         parts.append(
             f"## {i.title}\nscore {i.score:.2f} over {i.generations} pieces; by medium: "
@@ -175,9 +214,14 @@ def plan(
     catalog: list[ImageModel],
     current_event: str | None = None,
     today: str = "",
+    resting: str | None = None,
+    wild_card: WildCard | None = None,
 ) -> Intention:
     system = SYSTEM_PROMPT.format(source=FEEDBACK_SOURCE[learns_from], catalog=describe(catalog))
-    user = build_user(practice, interests, record, recent, learns_from, current_event, today)
+    if wild_card:
+        user = build_wild_card_user(wild_card, interests, today)
+    else:
+        user = build_user(practice, interests, record, recent, learns_from, current_event, today, resting)
     return provider.complete(system, user, response_model=Intention)
 
 
@@ -198,16 +242,22 @@ def resolve(
     record: dict[str, dict[str, ModelRecord]],
     default_model: str,
     rng: random.Random | None = None,
+    wild_card: WildCard | None = None,
 ) -> Choice:
     """Turn the intention into a model and settings draw-things-cli can run.
 
     A theme Jamal pinned to a model wins over the artist's medium; otherwise the artist's
     medium is used if it is in the catalog, else one is drawn by the old weighted record. The
     technique is clamped to the medium's room; a theme's own setting lines (Jamal's) go on
-    top; a seed is chosen so the piece can be re-run.
+    top; a seed is chosen so the piece can be re-run. A wild card's drawn medium wins over
+    everything, and a wild card never matches a theme, so no theme's pin or settings apply.
     """
-    interest = next((i for i in interests if i.title.strip().lower() == intention.theme.strip().lower()), None)
-    if interest and interest.model:
+    interest = None
+    if not wild_card:
+        interest = next((i for i in interests if i.title.strip().lower() == intention.theme.strip().lower()), None)
+    if wild_card and wild_card.medium and find(catalog, wild_card.medium):
+        model, how = wild_card.medium, "drawn (wild card)"
+    elif interest and interest.model:
         model, how = interest.model, f"pinned by {interest.title}"
     elif find(catalog, intention.medium):
         model, how = intention.medium, "chosen"

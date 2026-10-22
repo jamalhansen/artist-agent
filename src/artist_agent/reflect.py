@@ -11,6 +11,7 @@ difference (who they learn from) stays the only difference. Existing titles stil
 change, so a direction's history stays readable.
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +29,17 @@ FEEDBACK_SOURCE = {
 
 MIN_DIRECTIONS = 3
 MAX_DIRECTIONS = 5
+# A longer revision is refused: long briefs were how the directions turned into ban lists.
+MAX_DESCRIPTION_WORDS = 120
+REFUSE_OVER_WORDS = 160
+# Phrasing that bans instead of aiming. Not refused (a refusal would keep the older, worse
+# brief), but flagged in the changelog so a relapse shows up.
+_BAN_RE = re.compile(r"\b(avoid\w*|ban(?:ned|s)?|never|do not|don't|no more)\b", re.IGNORECASE)
+
+
+def ban_phrases(text: str) -> list[str]:
+    return sorted({m.group(0).lower() for m in _BAN_RE.finditer(text)})
+
 
 SYSTEM_PROMPT = """\
 You maintain the creative briefs for an AI artist's daily image experiment. Each brief
@@ -41,14 +53,24 @@ Rules:
 - Keep each direction's title. Usually revise how it's pursued; but when the feedback says
   the idea itself isn't landing (not just the execution), you may move the core idea, and
   say so in `change`.
-- Be concrete: name what to do more of and what to stop, using what the feedback actually says.
-- Keep any explicit "avoid" constraints already in a description.
+- Write each description as an aim, not a rulebook: what the direction is reaching for,
+  and what the feedback says is working, in at most {max_words} words. Each rewrite can
+  narrow a direction a little more, until it allows only one safe image (between 2026-10-11
+  and 10-18 the briefs grew into paragraphs of bans and every piece became the same simple
+  shapes). So widen as often as you narrow.
+- Speak in positives. Say what to make, how, and in what spirit. When the feedback says
+  something isn't working, rewrite or delete the words that led to it; do not add a rule
+  against it. No "avoid", "never", "do not", "no X" or lists of banned motifs: every
+  sentence should describe something to reach for. A brief that carries such rules from an
+  earlier week gets them turned into positive aims or removed.
 - A direction with no feedback stays exactly as it is.
 - `change` is one line on what you changed and why, or "unchanged".
 - You may propose at most ONE `new_direction` (a fresh title and description) when the
   feedback points somewhere none of the current directions go, and at most ONE `retire`
   (an existing title) when its feedback has been consistently poor and the brief has
-  already been revised before. Leave both null otherwise. There must stay between
+  already been revised before. One-offs and wild cards are listed after the directions:
+  when one earned clearly better feedback than the directions did, it is the best
+  candidate for `new_direction`. Leave both null otherwise. There must stay between
   {min_dirs} and {max_dirs} directions.
 - By default each direction draws its image model daily from the catalog below, weighted by
   its own track record (shown per direction, with the model behind each piece of feedback).
@@ -141,6 +163,20 @@ def build_user(
             for f in rows
         ] or ["- none"]
         parts.append("\n".join(lines))
+    titles = {i.title for i in interests}
+    one_offs = [f for f in feedback if f.interest not in titles]
+    if one_offs:
+        parts.append(
+            "\n".join(
+                ["## One-offs and wild cards (not directions; candidates for new_direction)"]
+                + [
+                    f"- {f.interest}: score {f.score:.2f}: {f.notes or '(no notes)'} | prompt: {f.prompt[:300]}"
+                    + (f" | rendered with {f.model}" if f.model else "")
+                    + _intention_line(f)
+                    for f in one_offs
+                ]
+            )
+        )
     return "\n\n".join(parts)
 
 
@@ -155,6 +191,7 @@ def revise(
 ) -> Reflection:
     system = SYSTEM_PROMPT.format(
         source=FEEDBACK_SOURCE[learns_from],
+        max_words=MAX_DESCRIPTION_WORDS,
         min_dirs=MIN_DIRECTIONS,
         max_dirs=MAX_DIRECTIONS,
         catalog=describe(catalog or []),
@@ -196,10 +233,17 @@ def apply(
             notes.append("settings " + _render_settings(r.settings()))
         description = i.description
         if r.description.strip() and r.change.strip().lower() != "unchanged":
-            description = r.description.strip()
-            notes.insert(0, r.change.strip())
+            if len(r.description.split()) > REFUSE_OVER_WORDS:
+                notes.insert(0, f"description refused ({len(r.description.split())} words, limit {REFUSE_OVER_WORDS})")
+            else:
+                description = r.description.strip()
+                notes.insert(0, r.change.strip())
+                if bans := ban_phrases(description):
+                    notes.append("still bans (" + ", ".join(bans) + ")")
         if description == i.description and model == i.model and settings == i.settings:
             out.append(i)
+            if notes:  # a refused description is worth a line in the changelog
+                log.append(f"- **{i.title}**: " + "; ".join(notes))
             continue
         out.append(Interest(i.title, i.score, i.generations, description, model, settings, i.signal))
         log.append(f"- **{i.title}**: " + "; ".join(notes))
@@ -234,9 +278,11 @@ headings: {sections}. Under each:
   to come back.
 - Stretching toward: one or two unfamiliar techniques, media or palettes to make studies
   with next week, chosen because the record has a gap there, not because they sound nice.
+  At least one of them must reach outside your current themes.
 - Lessons: the ten most useful lessons from all your work, newest first, one line each.
 
-Be concrete and short; this file is read before every piece. Keep anything the viewer wrote
+Be concrete and short; this file is read before every piece. Write it in positives: what
+works and what to reach for. A lesson about a failure says what to do instead. Keep anything the viewer wrote
 in it by hand that still applies. `change` is two or three lines on what you changed.
 """
 
