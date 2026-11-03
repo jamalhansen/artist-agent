@@ -89,7 +89,7 @@ class Revision(BaseModel):
     title: str
     description: str = Field(..., description="The full revised description")
     change: str = Field(..., description="One line: what changed and why, or 'unchanged'")
-    model: str | None = Field(None, description="Catalog model file to move this direction to, or null")
+    model: str | None = Field(default=None, description="Catalog model file to move this direction to, or null")
     steps: int | None = None
     cfg: float | None = None
     width: int | None = None
@@ -104,8 +104,8 @@ class Revision(BaseModel):
 
 class Reflection(BaseModel):
     directions: list[Revision]
-    new_direction: Revision | None = Field(None, description="One added direction, or null")
-    retire: str | None = Field(None, description="Title of one direction to drop, or null")
+    new_direction: Revision | None = Field(default=None, description="One added direction, or null")
+    retire: str | None = Field(default=None, description="Title of one direction to drop, or null")
 
 
 def _render_settings(settings: dict) -> str:

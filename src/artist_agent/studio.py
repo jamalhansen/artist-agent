@@ -73,7 +73,7 @@ class Intention(BaseModel):
     cfg: float | None = None
     sampler: str | None = None
     clip_skip: int | None = None
-    size: str | None = Field(None, description='"WxH" from the medium\'s sizes')
+    size: str | None = Field(default=None, description='"WxH" from the medium\'s sizes')
     mode: str = Field("piece", description='"study" or "piece"')
     hypothesis: str = Field("", description="What this piece should teach, one line")
     follows: str | None = Field(

@@ -160,7 +160,7 @@ def track_record(feedback: list[Feedback]) -> dict[str, dict[str, ModelRecord]]:
     sums: dict[str, dict[str, list[float]]] = {}
     last: dict[str, dict[str, dict]] = {}
     for f in feedback:  # oldest first, so the last write wins for last_settings
-        if not f.model:
+        if not f.model or f.score is None:
             continue
         sums.setdefault(f.interest, {}).setdefault(f.model, []).append(f.score)
         last.setdefault(f.interest, {})[f.model] = {k: v for k, v in f.settings.items() if k != "seed"}
@@ -177,6 +177,8 @@ def apply_scores(interests: list[Interest], feedback: list[Feedback]) -> list[In
     """Each direction's score becomes the mean of its feedback; no feedback means unscored."""
     by_title: dict[str, list[float]] = {}
     for f in feedback:
+        if f.score is None:
+            continue
         by_title.setdefault(f.interest, []).append(f.score)
     return [
         replace(i, score=sum(by_title[i.title]) / len(by_title[i.title]), generations=len(by_title[i.title]))

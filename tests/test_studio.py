@@ -84,6 +84,7 @@ def test_resolve_uses_the_chosen_medium_and_records_a_seed():
         Interest("Cyber", 0.3, 2, "d", model="sdxl.ckpt", settings={"cfg": 9.0}),
     ]
     c = studio.resolve(_intention(steps=6, size="1024x1024"), interests, _catalog(), {}, "x.ckpt", random.Random(1))
+    assert c.interest is not None
     assert (c.model, c.how, c.interest.title) == ("flux.ckpt", "chosen", "Wire")
     assert c.settings["steps"] == 6 and c.settings["width"] == 1024 and c.settings["height"] == 1024
     assert isinstance(c.settings["seed"], int)

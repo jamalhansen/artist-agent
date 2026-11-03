@@ -239,8 +239,8 @@ def generate(
         models=models_used,
         intention=intention.record() | ({"wild_card": wild.record()} if wild else {}),
         lesson=critique.lesson,
-        current_event_title=current_event.title if uses_signal else None,
-        current_event_source_url=current_event.source_url if uses_signal else None,
+        current_event_title=current_event.title if uses_signal and current_event else None,
+        current_event_source_url=current_event.source_url if uses_signal and current_event else None,
         artist=artist.name,
     )
     stem = item_stem(item)
